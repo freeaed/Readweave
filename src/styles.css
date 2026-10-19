@@ -214,6 +214,15 @@ body {
   animation: flash-highlight 1s ease-out;
 }
 
+.sidebar-item.active {
+  border-color: #007acc;
+}
+
+.sidebar-item.armed {
+  border-color: #ff9800;
+  box-shadow: 0 0 0 1px #ff9800 inset;
+}
+
 @keyframes flash-highlight {
   0% { background: rgba(255, 255, 0, 0.5); border-color: #ffcc00; }
   100% { background: #2d2d2d; border-color: transparent; }

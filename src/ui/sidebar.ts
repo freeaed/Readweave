@@ -92,6 +92,16 @@ export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbac
   }
 }
 
+export function showToast(message: string): void {
+  // Only one transient toast at a time, so messages don't overlap.
+  document.querySelectorAll('.toast:not(.undo)').forEach((el) => el.remove());
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 2600);
+}
+
 export function showUndoToast(message: string, onUndo: () => void): void {
   const toast = document.createElement('div');
   toast.className = 'toast undo';
