@@ -3,6 +3,7 @@ import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from '.
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
 import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
+import { createMapPanel, renderNeighborhood, MapNode, MapCallbacks } from './ui/map';
 import { repository } from './storage/repository';
 import { Highlight, Link, Anchor } from './types';
 import './styles.css';
@@ -42,6 +43,11 @@ viewerContainer.appendChild(emptyState);
 
 content.appendChild(createSidebar());
 
+const mapPanel = createMapPanel();
+appContainer.appendChild(mapPanel);
+mapPanel.addEventListener('map-close', () => closeMap());
+let mapCenterId: number | null = null;
+
 const RELATIONS = ['related', 'defines', 'example of', 'contrasts'] as const;
 const RELATION_KEYS: Record<string, string> = {
   '1': 'related',
@@ -75,6 +81,71 @@ function applyLinkMarkers(): void {
 
 function labelOf(highlight: Highlight): string {
   return (highlight.text || highlight.note || 'note').slice(0, 40);
+}
+
+function mapNodeOf(highlight: Highlight): MapNode {
+  return {
+    id: highlight.id,
+    page: highlight.anchor.page,
+    label: highlight.text || highlight.note || 'note',
+    isNote: highlight.anchor.rects.length === 0,
+  };
+}
+
+const mapCallbacks: MapCallbacks = {
+  onRecenter: (id: number) => {
+    mapCenterId = id;
+    renderMap();
+  },
+  onJump: (id: number) => {
+    const highlight = findHighlight(id);
+    if (highlight) {
+      activeHighlightId = highlight.id;
+      applyLinkMarkers();
+      jumpToHighlight(highlight);
+    }
+    closeMap();
+  },
+  onClose: () => closeMap(),
+};
+
+function renderMap(): void {
+  if (mapCenterId === null) return;
+  const center = findHighlight(mapCenterId);
+  if (!center) {
+    closeMap();
+    return;
+  }
+  const neighbors = currentLinks
+    .map((link) => (link.fromId === mapCenterId ? link.toId : link.toId === mapCenterId ? link.fromId : null))
+    .filter((id): id is number => id !== null)
+    .map((id) => findHighlight(id))
+    .filter((h): h is Highlight => Boolean(h))
+    .map(mapNodeOf);
+  renderNeighborhood(mapPanel, mapNodeOf(center), neighbors, mapCallbacks);
+}
+
+function openMap(centerId: number): void {
+  mapCenterId = centerId;
+  renderMap();
+  mapPanel.classList.remove('hidden');
+}
+
+function closeMap(): void {
+  mapCenterId = null;
+  mapPanel.classList.add('hidden');
+}
+
+function toggleMap(): void {
+  if (mapCenterId !== null) {
+    closeMap();
+    return;
+  }
+  if (activeHighlightId === null) {
+    showToast('Click a highlight first, then press M');
+    return;
+  }
+  openMap(activeHighlightId);
 }
 
 function buildConnections(links: Link[]): ConnectionMap {
@@ -274,6 +345,7 @@ async function refreshHighlights(): Promise<void> {
   renderPageHighlights(pageContainer, currentHighlights, getCurrentPage(), connections, onBadgeClick);
   renderSidebar(currentHighlights, sidebarCallbacks, connections);
   applyLinkMarkers();
+  if (mapCenterId !== null) renderMap();
 }
 
 // Persist the reading position shortly after the page settles.
@@ -361,8 +433,11 @@ document.addEventListener('keydown', async (e) => {
     await createNoteNode();
   } else if (e.key === 'l' || e.key === 'L') {
     await armLinking();
+  } else if (e.key === 'm' || e.key === 'M') {
+    toggleMap();
   } else if (e.key === 'Escape') {
-    cancelLinking();
+    if (mapCenterId !== null) closeMap();
+    else cancelLinking();
   } else if (pendingRelationLinkId !== null && RELATION_KEYS[e.key]) {
     await setRelation(pendingRelationLinkId, RELATION_KEYS[e.key]);
   }

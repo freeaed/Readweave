@@ -285,6 +285,96 @@ body {
   border-left: 3px solid #6b8e23;
 }
 
+.map-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+.map-panel.hidden {
+  display: none;
+}
+
+.map-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+}
+
+.map-title {
+  font-weight: 600;
+  color: #ddd;
+}
+
+.map-hint {
+  flex: 1;
+  font-size: 11px;
+  color: #888;
+}
+
+.map-close {
+  background: transparent;
+  color: #bbb;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-close:hover {
+  color: #fff;
+}
+
+.map-svg {
+  display: block;
+  background: #181818;
+  border-radius: 0 0 8px 8px;
+}
+
+.map-edge {
+  stroke: #555;
+  stroke-width: 1.5;
+}
+
+.map-node rect {
+  fill: #2a2a35;
+  stroke: #555;
+  stroke-width: 1.5;
+}
+
+.map-node:hover rect {
+  stroke: #007acc;
+}
+
+.map-node.center rect {
+  fill: #123a52;
+  stroke: #007acc;
+  stroke-width: 2;
+}
+
+.map-node text {
+  fill: #ddd;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.map-node-page {
+  fill: #888;
+  font-size: 11px;
+}
+
+.map-node-label {
+  font-size: 12px;
+}
+
 .sidebar-item-actions {
   display: flex;
   gap: 4px;
