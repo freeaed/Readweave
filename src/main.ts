@@ -1,10 +1,10 @@
 import { initViewer, getCurrentPage, goToPage } from './pdf/viewer';
 import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from './ui/toolbar';
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
-import { renderPageHighlights, flashHighlight } from './pdf/overlay';
+import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
 import { repository } from './storage/repository';
-import { Highlight } from './types';
+import { Highlight, Link } from './types';
 import './styles.css';
 
 const appContainer = document.getElementById('app');
@@ -52,12 +52,32 @@ function findHighlight(id: number): Highlight | undefined {
 }
 
 function applyLinkMarkers(): void {
-  const items = document.querySelectorAll<HTMLElement>('.sidebar-item[data-highlight-id]');
-  items.forEach((item) => {
+  document.querySelectorAll<HTMLElement>('.sidebar-item[data-highlight-id]').forEach((item) => {
     const id = Number(item.dataset.highlightId);
     item.classList.toggle('active', id === activeHighlightId);
     item.classList.toggle('armed', id === linkSourceId);
   });
+  document.querySelectorAll<HTMLElement>('.link-badge[data-highlight-id]').forEach((badge) => {
+    badge.classList.toggle('armed', Number(badge.dataset.highlightId) === linkSourceId);
+  });
+}
+
+function labelOf(highlight: Highlight): string {
+  return (highlight.text || highlight.note || '').slice(0, 40);
+}
+
+function buildConnections(links: Link[]): ConnectionMap {
+  const byId = new Map(currentHighlights.map((h) => [h.id, h]));
+  const map: ConnectionMap = new Map();
+  for (const h of currentHighlights) map.set(h.id, []);
+  for (const link of links) {
+    const a = byId.get(link.fromId);
+    const b = byId.get(link.toId);
+    if (!a || !b) continue;
+    map.get(a.id)!.push({ id: b.id, page: b.anchor.page, label: labelOf(b) });
+    map.get(b.id)!.push({ id: a.id, page: a.anchor.page, label: labelOf(a) });
+  }
+  return map;
 }
 
 function jumpToHighlight(highlight: Highlight): void {
@@ -132,6 +152,27 @@ function onSidebarSelect(highlight: Highlight): void {
   jumpToHighlight(highlight);
 }
 
+function onBadgeClick(highlightId: number): void {
+  if (linkSourceId !== null) {
+    const target = findHighlight(highlightId);
+    if (target) completeLink(target);
+    return;
+  }
+  activeHighlightId = highlightId;
+  linkSourceId = highlightId;
+  applyLinkMarkers();
+  const source = findHighlight(highlightId);
+  showToast(`Linking from p${source?.anchor.page ?? '?'} — click the other idea`);
+}
+
+function onOpenNeighbor(highlightId: number): void {
+  const highlight = findHighlight(highlightId);
+  if (!highlight) return;
+  activeHighlightId = highlight.id;
+  applyLinkMarkers();
+  jumpToHighlight(highlight);
+}
+
 const sidebarCallbacks = {
   onSelect: onSidebarSelect,
   onDelete: async (highlight: Highlight) => {
@@ -154,6 +195,7 @@ const sidebarCallbacks = {
   onNote: async (highlight: Highlight, note: string | null) => {
     await repository.updateHighlight(highlight.id, { note });
   },
+  onOpenNeighbor,
 };
 
 async function refreshHighlights(): Promise<void> {
@@ -165,8 +207,10 @@ async function refreshHighlights(): Promise<void> {
     return;
   }
   currentHighlights = await repository.listHighlights(source.id);
-  renderPageHighlights(pageContainer, currentHighlights, getCurrentPage());
-  renderSidebar(currentHighlights, sidebarCallbacks);
+  const links = await repository.listLinksForSource(source.id);
+  const connections = buildConnections(links);
+  renderPageHighlights(pageContainer, currentHighlights, getCurrentPage(), connections, onBadgeClick);
+  renderSidebar(currentHighlights, sidebarCallbacks, connections);
   applyLinkMarkers();
 }
 

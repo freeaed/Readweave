@@ -160,6 +160,30 @@ body {
   animation: box-flash 1s ease-out;
 }
 
+.link-badge {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #007acc;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.link-badge.armed {
+  background: #ff9800;
+}
+
 @keyframes box-flash {
   0%, 50% { background: rgba(255, 152, 0, 0.85); }
   100% { background: rgba(255, 235, 59, 0.35); }
@@ -261,6 +285,32 @@ body {
   display: flex;
   gap: 4px;
   margin-top: 6px;
+}
+
+.connection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.connection-chip {
+  max-width: 100%;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: #2a2a35;
+  color: #bbb;
+  border: 1px solid #555;
+  border-radius: 10px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-chip:hover {
+  border-color: #007acc;
+  color: #fff;
 }
 
 .sidebar-item-actions button {

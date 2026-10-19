@@ -1,9 +1,11 @@
 import { Highlight } from '../types';
+import { ConnectionMap } from '../pdf/overlay';
 
 export interface SidebarCallbacks {
   onSelect: (highlight: Highlight) => void;
   onDelete: (highlight: Highlight) => void;
   onNote: (highlight: Highlight, note: string | null) => void;
+  onOpenNeighbor: (highlightId: number) => void;
 }
 
 function topOf(highlight: Highlight): number {
@@ -31,7 +33,7 @@ export function createSidebar(): HTMLElement {
   return sidebar;
 }
 
-export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbacks): void {
+export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbacks, connections?: ConnectionMap): void {
   const list = document.getElementById('sidebar-list');
   if (!list) return;
   list.replaceChildren();
@@ -86,7 +88,27 @@ export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbac
     });
     actions.appendChild(deleteBtn);
 
-    item.append(page, preview, noteInput, actions);
+    item.append(page, preview, noteInput);
+
+    const neighbors = connections?.get(highlight.id) ?? [];
+    if (neighbors.length > 0) {
+      const chips = document.createElement('div');
+      chips.className = 'connection-chips';
+      for (const neighbor of neighbors) {
+        const chip = document.createElement('button');
+        chip.className = 'connection-chip';
+        chip.textContent = `→ p${neighbor.page} · ${neighbor.label}`;
+        chip.title = neighbor.label;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          callbacks.onOpenNeighbor(neighbor.id);
+        });
+        chips.appendChild(chip);
+      }
+      item.appendChild(chips);
+    }
+
+    item.appendChild(actions);
     item.addEventListener('click', () => callbacks.onSelect(highlight));
     list.appendChild(item);
   }
