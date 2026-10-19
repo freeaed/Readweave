@@ -84,7 +84,7 @@ export function createToolbar(): HTMLElement {
   return toolbar;
 }
 
-function updatePageLabel(): void {
+export function updatePageLabel(): void {
   const label = document.getElementById('page-label');
   if (label) label.textContent = `Page ${getCurrentPage()} of ${getTotalPages()}`;
 }

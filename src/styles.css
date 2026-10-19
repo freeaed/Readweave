@@ -19,6 +19,13 @@ body {
   height: 100vh;
 }
 
+#content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #viewer-container {
   flex: 1;
   overflow: auto;
@@ -179,6 +186,13 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+}
+
+.sidebar-empty {
+  padding: 16px 10px;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .sidebar-item {

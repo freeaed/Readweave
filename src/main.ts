@@ -1,7 +1,8 @@
-import { initViewer, getCurrentPage } from './pdf/viewer';
-import { createToolbar, initializeApp, openFileDialog } from './ui/toolbar';
+import { initViewer, getCurrentPage, goToPage } from './pdf/viewer';
+import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from './ui/toolbar';
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
-import { renderPageHighlights } from './pdf/overlay';
+import { renderPageHighlights, flashHighlight } from './pdf/overlay';
+import { createSidebar, renderSidebar } from './ui/sidebar';
 import { repository } from './storage/repository';
 import { Highlight } from './types';
 import './styles.css';
@@ -12,9 +13,13 @@ if (!appContainer) throw new Error('Missing #app container');
 appContainer.replaceChildren();
 appContainer.appendChild(createToolbar());
 
+const content = document.createElement('div');
+content.id = 'content';
+appContainer.appendChild(content);
+
 const viewerContainer = document.createElement('div');
 viewerContainer.id = 'viewer-container';
-appContainer.appendChild(viewerContainer);
+content.appendChild(viewerContainer);
 
 const pageContainer = document.createElement('div');
 pageContainer.id = 'page-container';
@@ -35,11 +40,28 @@ emptyState.innerHTML = `
 emptyState.querySelector('#empty-open-btn')?.addEventListener('click', openFileDialog);
 viewerContainer.appendChild(emptyState);
 
+content.appendChild(createSidebar());
+
+function jumpToHighlight(highlight: Highlight): void {
+  if (getCurrentPage() !== highlight.anchor.page) {
+    goToPage(highlight.anchor.page);
+    // Wait for the render then flash; boxes are redrawn on 'page-rendered'.
+    setTimeout(() => flashHighlight(pageContainer, highlight.id), 500);
+  } else {
+    flashHighlight(pageContainer, highlight.id);
+  }
+}
+
 async function refreshHighlights(): Promise<void> {
+  updatePageLabel();
   const source = await repository.getLastOpenedSource();
-  if (!source) return;
+  if (!source) {
+    renderSidebar([], jumpToHighlight);
+    return;
+  }
   const highlights = await repository.listHighlights(source.id);
   renderPageHighlights(pageContainer, highlights, getCurrentPage());
+  renderSidebar(highlights, jumpToHighlight);
 }
 
 pageContainer.addEventListener('page-rendered', refreshHighlights);
