@@ -13,6 +13,7 @@ type ViewerState = {
   canvas: HTMLCanvasElement | null;
   textLayerDiv: HTMLDivElement | null;
   textLayer: pdfjsLib.TextLayer | null;
+  renderTask: pdfjsLib.RenderTask | null;
 };
 
 const viewerState: ViewerState = {
@@ -24,7 +25,11 @@ const viewerState: ViewerState = {
   canvas: null,
   textLayerDiv: null,
   textLayer: null,
+  renderTask: null,
 };
+
+// Guards against overlapping renders when the user pages or zooms quickly.
+let renderToken = 0;
 
 export function initViewer(container: HTMLElement): { canvas: HTMLCanvasElement; textLayerDiv: HTMLDivElement } {
   viewerState.container = container;
@@ -60,10 +65,14 @@ export async function renderPage(pageNumber: number): Promise<string> {
   const { pdfDoc, canvas, textLayerDiv, container } = viewerState;
   if (!pdfDoc || !canvas || !textLayerDiv || !container) return '';
 
+  const token = ++renderToken;
+
   const page = await pdfDoc.getPage(pageNumber);
+  if (token !== renderToken) return '';
   viewerState.pageNumber = pageNumber;
 
   const textContent = await page.getTextContent();
+  if (token !== renderToken) return '';
   const fullText = textContent.items.map((item: any) => item.str).join(' ');
 
   const viewport = page.getViewport({ scale: viewerState.scale });
@@ -83,16 +92,27 @@ export async function renderPage(pageNumber: number): Promise<string> {
   container.style.setProperty('--scale-round-x', '1px');
   container.style.setProperty('--scale-round-y', '1px');
 
+  viewerState.renderTask?.cancel();
+
   const transform = outputScale.scaled
     ? [outputScale.sx, 0, 0, outputScale.sy, 0, 0]
     : undefined;
 
-  await page.render({
+  const task = page.render({
     canvas,
     canvasContext: canvas.getContext('2d')!,
     viewport,
     transform,
-  }).promise;
+  });
+  viewerState.renderTask = task;
+
+  try {
+    await task.promise;
+  } catch (err) {
+    if ((err as Error)?.name === 'RenderingCancelledException') return '';
+    throw err;
+  }
+  if (token !== renderToken) return '';
 
   // Replace the previous text layer.
   if (viewerState.textLayer) {
@@ -106,7 +126,15 @@ export async function renderPage(pageNumber: number): Promise<string> {
     viewport,
   });
   viewerState.textLayer = textLayer;
-  await textLayer.render();
+  try {
+    await textLayer.render();
+  } catch {
+    return '';
+  }
+  if (token !== renderToken) return '';
+
+  // Let the app draw stored highlights for this page.
+  container.dispatchEvent(new CustomEvent('page-rendered', { detail: { page: pageNumber } }));
 
   return fullText;
 }

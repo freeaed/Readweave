@@ -1,6 +1,7 @@
-import { initViewer } from './pdf/viewer';
+import { initViewer, getCurrentPage } from './pdf/viewer';
 import { createToolbar, initializeApp, openFileDialog } from './ui/toolbar';
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
+import { renderPageHighlights } from './pdf/overlay';
 import { repository } from './storage/repository';
 import { Highlight } from './types';
 import './styles.css';
@@ -34,6 +35,15 @@ emptyState.innerHTML = `
 emptyState.querySelector('#empty-open-btn')?.addEventListener('click', openFileDialog);
 viewerContainer.appendChild(emptyState);
 
+async function refreshHighlights(): Promise<void> {
+  const source = await repository.getLastOpenedSource();
+  if (!source) return;
+  const highlights = await repository.listHighlights(source.id);
+  renderPageHighlights(pageContainer, highlights, getCurrentPage());
+}
+
+pageContainer.addEventListener('page-rendered', refreshHighlights);
+
 initializeApp();
 
 document.addEventListener('keydown', async (e) => {
@@ -63,4 +73,5 @@ document.addEventListener('keydown', async (e) => {
   }
   clearSelection();
   showHighlightFlash();
+  await refreshHighlights();
 });
