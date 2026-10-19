@@ -42,10 +42,21 @@ viewerContainer.appendChild(emptyState);
 
 content.appendChild(createSidebar());
 
+const RELATIONS = ['related', 'defines', 'example of', 'contrasts'] as const;
+const RELATION_KEYS: Record<string, string> = {
+  '1': 'related',
+  '2': 'defines',
+  '3': 'example of',
+  '4': 'contrasts',
+};
+
 // Linking state. `active` = last touched highlight; `armed` = source waiting for a target.
 let activeHighlightId: number | null = null;
 let linkSourceId: number | null = null;
 let currentHighlights: Highlight[] = [];
+let currentLinks: Link[] = [];
+let pendingRelationLinkId: number | null = null;
+let pendingRelationTimer: number | undefined;
 
 function findHighlight(id: number): Highlight | undefined {
   return currentHighlights.find((h) => h.id === id);
@@ -74,8 +85,8 @@ function buildConnections(links: Link[]): ConnectionMap {
     const a = byId.get(link.fromId);
     const b = byId.get(link.toId);
     if (!a || !b) continue;
-    map.get(a.id)!.push({ id: b.id, page: b.anchor.page, label: labelOf(b) });
-    map.get(b.id)!.push({ id: a.id, page: a.anchor.page, label: labelOf(a) });
+    map.get(a.id)!.push({ id: b.id, page: b.anchor.page, label: labelOf(b), linkId: link.id, relation: link.relation });
+    map.get(b.id)!.push({ id: a.id, page: a.anchor.page, label: labelOf(a), linkId: link.id, relation: link.relation });
   }
   return map;
 }
@@ -91,10 +102,40 @@ function jumpToHighlight(highlight: Highlight): void {
 }
 
 function cancelLinking(): void {
+  clearPendingRelation();
   if (linkSourceId === null) return;
   linkSourceId = null;
   applyLinkMarkers();
   showToast('Linking cancelled');
+}
+
+function clearPendingRelation(): void {
+  pendingRelationLinkId = null;
+  window.clearTimeout(pendingRelationTimer);
+}
+
+function offerRelation(linkId: number, fromPage: number | undefined, toPage: number): void {
+  pendingRelationLinkId = linkId;
+  window.clearTimeout(pendingRelationTimer);
+  pendingRelationTimer = window.setTimeout(clearPendingRelation, 5000);
+  showToast(`Linked p${fromPage ?? '?'} ↔ p${toPage} · 1 related · 2 defines · 3 example of · 4 contrasts`);
+}
+
+async function setRelation(linkId: number, relation: string): Promise<void> {
+  clearPendingRelation();
+  await repository.updateLink(linkId, { relation });
+  await refreshHighlights();
+  showToast(`Relation: ${relation}`);
+}
+
+async function cycleRelation(linkId: number): Promise<void> {
+  const link = currentLinks.find((l) => l.id === linkId);
+  if (!link) return;
+  const index = RELATIONS.indexOf(link.relation as (typeof RELATIONS)[number]);
+  const next = RELATIONS[(index + 1 + RELATIONS.length) % RELATIONS.length];
+  await repository.updateLink(linkId, { relation: next });
+  await refreshHighlights();
+  showToast(`Relation: ${next}`);
 }
 
 async function armLinking(): Promise<void> {
@@ -124,8 +165,9 @@ async function completeLink(target: Highlight): Promise<void> {
   }
 
   const source = findHighlight(sourceId);
+  let link: Link | undefined;
   try {
-    await repository.addLink({
+    link = await repository.addLink({
       fromId: sourceId,
       toId: target.id,
       relation: 'related',
@@ -139,7 +181,7 @@ async function completeLink(target: Highlight): Promise<void> {
   activeHighlightId = target.id;
   await refreshHighlights();
   jumpToHighlight(target);
-  showToast(`Linked p${source?.anchor.page ?? '?'} ↔ p${target.anchor.page}`);
+  if (link) offerRelation(link.id, source?.anchor.page, target.anchor.page);
 }
 
 function onSidebarSelect(highlight: Highlight): void {
@@ -196,6 +238,24 @@ const sidebarCallbacks = {
     await repository.updateHighlight(highlight.id, { note });
   },
   onOpenNeighbor,
+  onCycleRelation: cycleRelation,
+  onUnlink: async (linkId: number) => {
+    const link = currentLinks.find((l) => l.id === linkId);
+    if (!link) return;
+    await repository.deleteLink(linkId);
+    await refreshHighlights();
+    const restore: Omit<Link, 'id' | 'createdAt'> = {
+      fromId: link.fromId,
+      toId: link.toId,
+      relation: link.relation,
+      origin: link.origin,
+      status: link.status,
+    };
+    showUndoToast('Link removed', async () => {
+      await repository.addLink(restore);
+      await refreshHighlights();
+    });
+  },
 };
 
 async function refreshHighlights(): Promise<void> {
@@ -203,11 +263,13 @@ async function refreshHighlights(): Promise<void> {
   const source = await repository.getLastOpenedSource();
   if (!source) {
     currentHighlights = [];
+    currentLinks = [];
     renderSidebar([], sidebarCallbacks);
     return;
   }
   currentHighlights = await repository.listHighlights(source.id);
   const links = await repository.listLinksForSource(source.id);
+  currentLinks = links;
   const connections = buildConnections(links);
   renderPageHighlights(pageContainer, currentHighlights, getCurrentPage(), connections, onBadgeClick);
   renderSidebar(currentHighlights, sidebarCallbacks, connections);
@@ -273,5 +335,7 @@ document.addEventListener('keydown', async (e) => {
     await armLinking();
   } else if (e.key === 'Escape') {
     cancelLinking();
+  } else if (pendingRelationLinkId !== null && RELATION_KEYS[e.key]) {
+    await setRelation(pendingRelationLinkId, RELATION_KEYS[e.key]);
   }
 });

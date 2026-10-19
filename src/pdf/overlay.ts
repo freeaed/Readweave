@@ -1,6 +1,12 @@
 import { Highlight } from '../types';
 
-export type NeighborInfo = { id: number; page: number; label: string };
+export type NeighborInfo = {
+  id: number;
+  page: number;
+  label: string;
+  linkId: number;
+  relation: string;
+};
 export type ConnectionMap = Map<number, NeighborInfo[]>;
 
 const OVERLAY_CLASS = 'highlight-overlay';

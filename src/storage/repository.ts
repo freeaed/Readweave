@@ -91,7 +91,14 @@ const repositoryImpl = {
   },
 
   async updateLink(id: number, patch: Partial<Link>): Promise<void> {
-    await db.links.update(id, patch);
+    const current = await db.links.get(id);
+    if (!current) return;
+    const merged = { ...current, ...patch };
+    let { fromId, toId } = merged;
+    if (SYMMETRIC_RELATIONS.has(merged.relation) && fromId > toId) {
+      [fromId, toId] = [toId, fromId];
+    }
+    await db.links.update(id, { ...patch, fromId, toId });
   },
 
   async deleteLink(id: number): Promise<void> {

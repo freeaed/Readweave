@@ -6,6 +6,8 @@ export interface SidebarCallbacks {
   onDelete: (highlight: Highlight) => void;
   onNote: (highlight: Highlight, note: string | null) => void;
   onOpenNeighbor: (highlightId: number) => void;
+  onCycleRelation: (linkId: number) => void;
+  onUnlink: (linkId: number) => void;
 }
 
 function topOf(highlight: Highlight): number {
@@ -95,15 +97,38 @@ export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbac
       const chips = document.createElement('div');
       chips.className = 'connection-chips';
       for (const neighbor of neighbors) {
-        const chip = document.createElement('button');
-        chip.className = 'connection-chip';
-        chip.textContent = `→ p${neighbor.page} · ${neighbor.label}`;
-        chip.title = neighbor.label;
-        chip.addEventListener('click', (e) => {
+        const group = document.createElement('div');
+        group.className = 'connection-chip';
+
+        const jump = document.createElement('button');
+        jump.className = 'chip-jump';
+        jump.textContent = `→ p${neighbor.page} · ${neighbor.label}`;
+        jump.title = neighbor.label;
+        jump.addEventListener('click', (e) => {
           e.stopPropagation();
           callbacks.onOpenNeighbor(neighbor.id);
         });
-        chips.appendChild(chip);
+
+        const relation = document.createElement('button');
+        relation.className = 'chip-relation';
+        relation.textContent = neighbor.relation;
+        relation.title = 'Click to change relation';
+        relation.addEventListener('click', (e) => {
+          e.stopPropagation();
+          callbacks.onCycleRelation(neighbor.linkId);
+        });
+
+        const unlink = document.createElement('button');
+        unlink.className = 'chip-unlink';
+        unlink.textContent = '×';
+        unlink.title = 'Unlink';
+        unlink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          callbacks.onUnlink(neighbor.linkId);
+        });
+
+        group.append(jump, relation, unlink);
+        chips.appendChild(group);
       }
       item.appendChild(chips);
     }

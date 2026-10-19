@@ -295,22 +295,57 @@ body {
 }
 
 .connection-chip {
+  display: inline-flex;
+  align-items: stretch;
   max-width: 100%;
-  padding: 2px 8px;
-  font-size: 11px;
   background: #2a2a35;
-  color: #bbb;
   border: 1px solid #555;
   border-radius: 10px;
-  cursor: pointer;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .connection-chip:hover {
   border-color: #007acc;
+}
+
+.chip-jump,
+.chip-relation,
+.chip-unlink {
+  background: transparent;
+  color: #bbb;
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.chip-jump {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.chip-relation {
+  border-left: 1px solid #555;
+  font-style: italic;
+  color: #9cc;
+}
+
+.chip-unlink {
+  border-left: 1px solid #555;
+  padding: 2px 6px;
+  color: #999;
+}
+
+.chip-jump:hover,
+.chip-unlink:hover {
   color: #fff;
+}
+
+.chip-relation:hover {
+  color: #fff;
+  background: #26404d;
 }
 
 .sidebar-item-actions button {
