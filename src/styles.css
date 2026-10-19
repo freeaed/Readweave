@@ -59,6 +59,7 @@ body {
   position: absolute;
   white-space: pre;
   cursor: text;
+  pointer-events: auto;
 }
 
 .toolbar {
