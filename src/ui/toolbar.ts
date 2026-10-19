@@ -1,74 +1,163 @@
-import { loadPdf } from '../pdf/viewer';
+import { loadPdf, prevPage, nextPage, goToPage, setScale, getScale, getCurrentPage, getTotalPages, fitToWidth } from '../pdf/viewer';
 import { repository } from '../storage/repository';
 import { getBlobHash } from '../utils/hash';
-import '../styles.css';
 import { Source } from '../types';
 
-/**
- * Handles opening a document, whether via button or dropped file.
- * @param file The File/Blob object to process.
- * @param canvas The rendering canvas.
- */
-async function handleDocumentOpen(file: File, canvas: HTMLCanvasElement) {
+let currentCanvas: HTMLCanvasElement | null = null;
+let fileInput: HTMLInputElement | null = null;
+
+export function createToolbar(): HTMLElement {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'toolbar';
+  toolbar.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #2d2d2d;
+    border-bottom: 1px solid #444;
+    flex-shrink: 0;
+  `;
+
+  // Open file button
+  const openBtn = document.createElement('button');
+  openBtn.textContent = 'Open PDF';
+  openBtn.style.cssText = 'padding: 6px 12px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  openBtn.addEventListener('click', () => fileInput?.click());
+
+  fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'application/pdf';
+  fileInput.style.display = 'none';
+  fileInput.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (file) {
+      await handleDocumentOpen(file);
+    }
+    // Reset value so same file can be selected again
+    if (fileInput) fileInput.value = '';
+  });
+  toolbar.appendChild(fileInput);
+
+  // Previous page button
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '← Prev';
+  prevBtn.style.cssText = 'padding: 6px 12px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  prevBtn.addEventListener('click', () => {
+    if (prevPage()) {
+      updatePageLabel();
+    }
+  });
+
+  // Page label
+  const pageLabel = document.createElement('span');
+  pageLabel.id = 'page-label';
+  pageLabel.textContent = 'Page - of -';
+  pageLabel.style.cssText = 'margin: 0 8px; min-width: 100px; text-align: center;';
+
+  // Next page button
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = 'Next →';
+  nextBtn.style.cssText = 'padding: 6px 12px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  nextBtn.addEventListener('click', () => {
+    if (nextPage()) {
+      updatePageLabel();
+    }
+  });
+
+  // Zoom controls
+  const zoomOutBtn = document.createElement('button');
+  zoomOutBtn.textContent = '−';
+  zoomOutBtn.style.cssText = 'padding: 4px 10px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  zoomOutBtn.addEventListener('click', () => {
+    setScale(Math.max(0.5, getScale() - 0.2));
+    updatePageLabel();
+  });
+
+  const zoomInBtn = document.createElement('button');
+  zoomInBtn.textContent = '+';
+  zoomInBtn.style.cssText = 'padding: 4px 10px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  zoomInBtn.addEventListener('click', () => {
+    setScale(Math.min(3.0, getScale() + 0.2));
+    updatePageLabel();
+  });
+
+  const fitWidthBtn = document.createElement('button');
+  fitWidthBtn.textContent = 'Fit Width';
+  fitWidthBtn.style.cssText = 'padding: 6px 12px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;';
+  fitWidthBtn.addEventListener('click', async () => {
+    await fitToWidth();
+    updatePageLabel();
+  });
+
+  toolbar.append(openBtn, prevBtn, pageLabel, nextBtn, zoomOutBtn, zoomInBtn, fitWidthBtn);
+
+  // Drag and drop on the whole window
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      await handleDocumentOpen(file);
+    }
+  });
+
+  return toolbar;
+}
+
+function updatePageLabel(): void {
+  const label = document.getElementById('page-label');
+  if (label) {
+    label.textContent = `Page ${getCurrentPage()} of ${getTotalPages()}`;
+  }
+}
+
+async function handleDocumentOpen(file: File): Promise<void> {
   const hash = await getBlobHash(file);
   console.log(`Calculated hash: ${hash}`);
 
-  // 1. Check if source exists
   let source: Source | undefined = await repository.findSourceByHash(hash);
 
   if (!source) {
-    // 2. Create a new source
-    const newSource = {
-      title: file.name.replace('.pdf', ''), // Simple title extraction
+    const newSource: Omit<Source, 'id'> = {
+      type: 'pdf',
+      title: file.name.replace(/\.pdf$/i, ''),
       contentHash: hash,
-      fileBlob: file, // Blob storage
-      // Other fields will be populated by repository.addSource later
-    } as Omit<Source, 'id'>;
-    
-    console.log("Source not found. Saving new source...");
+      fileBlob: file,
+      lastOpenedAt: new Date().toISOString(),
+      lastPosition: { page: 1 },
+      createdAt: new Date().toISOString(),
+    };
+
+    console.log('Source not found. Saving new source...');
     source = await repository.addSource(newSource);
   } else {
-    console.log("Source found in database. Reusing existing source.");
+    console.log('Source found in database. Reusing existing source.');
+    await repository.updateSource(source.id, {
+      lastOpenedAt: new Date().toISOString(),
+      lastPosition: { page: 1 },
+    });
   }
-  
-  // 3. Load PDF and initialize viewer state
+
   console.log(`Loading source ID ${source?.id}`);
-  // Use URL.createObjectURL for the Blob/File object to serve it to PDF.js
-  await loadPdf(URL.createObjectURL(source!.fileBlob));
+  await loadPdf(source!.fileBlob);
+  updatePageLabel();
 }
 
-/**
- * Initialization function:
- * 1. Checks for a last opened source.
- * 2. Attaches listeners for file input/drag drop.
- * 3. If a source is found, loads its blob content.
- * @param canvas The rendering canvas element.
- */
-export function initializeApp(canvas: HTMLCanvasElement) {
-  console.log("Application initialization sequence started.");
+export async function initializeApp(canvas: HTMLCanvasElement): Promise<void> {
+  currentCanvas = canvas;
+  console.log('Application initialization sequence started.');
 
-  // Event Listener Setup (Mocked for this phase)
-  const dropZone = document.getElementById('drop-zone');
-  if (dropZone) {
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const file = e.dataTransfer?.files?.[0] as File;
-      if (file) {
-        handleDocumentOpen(file, canvas);
-      }
-    });
-    // Add dragover listener for visual feedback (ignored for code brevity)
-  }
-
-  // Task 3 Step: Load last opened source on startup
-  repository.getLastOpenedSource().then(async (source) => {
-    if (source) {
-      console.log("Found last opened source. Re-loading...");
-      // Use temporary file creation/blob access here in a real sandbox environment
-      // For now, we simulate the load using the stored blob
-      await loadPdf(URL.createObjectURL(source.fileBlob));
-    } else {
-      console.log("No last opened source found.");
+  // Load last opened source on startup
+  const source = await repository.getLastOpenedSource();
+  if (source) {
+    console.log('Found last opened source. Re-loading...');
+    await loadPdf(source.fileBlob);
+    if (source.lastPosition?.page) {
+      goToPage(source.lastPosition.page);
     }
-  });
+    updatePageLabel();
+  } else {
+    console.log('No last opened source found.');
+  }
 }
