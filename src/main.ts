@@ -3,7 +3,7 @@ import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from '.
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
 import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
-import { createMapPanel, renderNeighborhood, MapNode, MapCallbacks } from './ui/map';
+import { createMapPanel, renderNeighborhood, renderFullMap, MapNode, MapCallbacks } from './ui/map';
 import { repository } from './storage/repository';
 import { Highlight, Link, Anchor } from './types';
 import './styles.css';
@@ -12,7 +12,7 @@ const appContainer = document.getElementById('app');
 if (!appContainer) throw new Error('Missing #app container');
 
 appContainer.replaceChildren();
-appContainer.appendChild(createToolbar());
+appContainer.appendChild(createToolbar(toggleFullMap));
 
 const content = document.createElement('div');
 content.id = 'content';
@@ -46,6 +46,9 @@ content.appendChild(createSidebar());
 const mapPanel = createMapPanel();
 appContainer.appendChild(mapPanel);
 mapPanel.addEventListener('map-close', () => closeMap());
+mapPanel.addEventListener('map-toggle', () => toggleMapView());
+let mapOpen = false;
+let mapMode: 'neighborhood' | 'full' = 'neighborhood';
 let mapCenterId: number | null = null;
 
 const RELATIONS = ['related', 'defines', 'example of', 'contrasts'] as const;
@@ -95,6 +98,7 @@ function mapNodeOf(highlight: Highlight): MapNode {
 const mapCallbacks: MapCallbacks = {
   onRecenter: (id: number) => {
     mapCenterId = id;
+    mapMode = 'neighborhood';
     renderMap();
   },
   onJump: (id: number) => {
@@ -107,37 +111,60 @@ const mapCallbacks: MapCallbacks = {
     closeMap();
   },
   onClose: () => closeMap(),
+  onToggleView: () => toggleMapView(),
 };
 
+function neighborsOf(centerId: number): MapNode[] {
+  return currentLinks
+    .map((link) => (link.fromId === centerId ? link.toId : link.toId === centerId ? link.fromId : null))
+    .filter((id): id is number => id !== null)
+    .map((id) => findHighlight(id))
+    .filter((h): h is Highlight => Boolean(h))
+    .map(mapNodeOf);
+}
+
 function renderMap(): void {
+  if (!mapOpen) return;
+  if (mapMode === 'full') {
+    renderFullMap(mapPanel, currentHighlights.map(mapNodeOf), currentLinks, mapCallbacks);
+    return;
+  }
   if (mapCenterId === null) return;
   const center = findHighlight(mapCenterId);
   if (!center) {
     closeMap();
     return;
   }
-  const neighbors = currentLinks
-    .map((link) => (link.fromId === mapCenterId ? link.toId : link.toId === mapCenterId ? link.fromId : null))
-    .filter((id): id is number => id !== null)
-    .map((id) => findHighlight(id))
-    .filter((h): h is Highlight => Boolean(h))
-    .map(mapNodeOf);
-  renderNeighborhood(mapPanel, mapNodeOf(center), neighbors, mapCallbacks);
+  renderNeighborhood(mapPanel, mapNodeOf(center), neighborsOf(mapCenterId), mapCallbacks);
 }
 
-function openMap(centerId: number): void {
-  mapCenterId = centerId;
+function showMap(): void {
   renderMap();
   mapPanel.classList.remove('hidden');
 }
 
+function openNeighborhood(centerId: number): void {
+  mapMode = 'neighborhood';
+  mapCenterId = centerId;
+  mapOpen = true;
+  showMap();
+}
+
+function openFullMap(): void {
+  mapMode = 'full';
+  mapCenterId = null;
+  mapOpen = true;
+  showMap();
+}
+
 function closeMap(): void {
+  mapOpen = false;
   mapCenterId = null;
   mapPanel.classList.add('hidden');
 }
 
 function toggleMap(): void {
-  if (mapCenterId !== null) {
+  if (mapOpen && mapMode === 'neighborhood') {
     closeMap();
     return;
   }
@@ -145,7 +172,28 @@ function toggleMap(): void {
     showToast('Click a highlight first, then press M');
     return;
   }
-  openMap(activeHighlightId);
+  openNeighborhood(activeHighlightId);
+}
+
+function toggleFullMap(): void {
+  if (mapOpen && mapMode === 'full') {
+    closeMap();
+    return;
+  }
+  openFullMap();
+}
+
+function toggleMapView(): void {
+  if (mapMode === 'full') {
+    const center = activeHighlightId ?? currentHighlights[0]?.id ?? null;
+    if (center === null) {
+      showToast('No highlights yet');
+      return;
+    }
+    openNeighborhood(center);
+  } else {
+    openFullMap();
+  }
 }
 
 function buildConnections(links: Link[]): ConnectionMap {
@@ -345,7 +393,7 @@ async function refreshHighlights(): Promise<void> {
   renderPageHighlights(pageContainer, currentHighlights, getCurrentPage(), connections, onBadgeClick);
   renderSidebar(currentHighlights, sidebarCallbacks, connections);
   applyLinkMarkers();
-  if (mapCenterId !== null) renderMap();
+  if (mapOpen) renderMap();
 }
 
 // Persist the reading position shortly after the page settles.
@@ -433,10 +481,12 @@ document.addEventListener('keydown', async (e) => {
     await createNoteNode();
   } else if (e.key === 'l' || e.key === 'L') {
     await armLinking();
-  } else if (e.key === 'm' || e.key === 'M') {
+  } else if (e.key === 'm') {
     toggleMap();
+  } else if (e.key === 'M') {
+    toggleFullMap();
   } else if (e.key === 'Escape') {
-    if (mapCenterId !== null) closeMap();
+    if (mapOpen) closeMap();
     else cancelLinking();
   } else if (pendingRelationLinkId !== null && RELATION_KEYS[e.key]) {
     await setRelation(pendingRelationLinkId, RELATION_KEYS[e.key]);

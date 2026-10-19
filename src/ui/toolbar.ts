@@ -14,7 +14,7 @@ export function openFileDialog(): void {
   fileInput?.click();
 }
 
-export function createToolbar(): HTMLElement {
+export function createToolbar(onMap?: () => void): HTMLElement {
   const toolbar = document.createElement('div');
   toolbar.className = 'toolbar';
 
@@ -71,6 +71,14 @@ export function createToolbar(): HTMLElement {
   });
 
   toolbar.append(prevBtn, pageLabel, nextBtn, zoomOutBtn, zoomInBtn, fitWidthBtn);
+
+  if (onMap) {
+    const mapBtn = document.createElement('button');
+    mapBtn.textContent = 'Map';
+    mapBtn.title = 'Full document map (Shift+M)';
+    mapBtn.addEventListener('click', onMap);
+    toolbar.appendChild(mapBtn);
+  }
 
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', async (e) => {

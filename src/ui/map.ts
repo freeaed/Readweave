@@ -9,6 +9,7 @@ export interface MapCallbacks {
   onRecenter: (id: number) => void;
   onJump: (id: number) => void;
   onClose: () => void;
+  onToggleView: () => void;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -49,12 +50,17 @@ export function createMapPanel(): HTMLElement {
   const hint = document.createElement('span');
   hint.className = 'map-hint';
   hint.textContent = 'click to recenter · click center to go · Esc closes';
+  const toggle = document.createElement('button');
+  toggle.className = 'map-toggle';
+  toggle.textContent = 'Full map';
+  toggle.title = 'Switch between the neighborhood and the whole document (Shift+M)';
+  toggle.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-toggle')));
   const close = document.createElement('button');
   close.className = 'map-close';
   close.textContent = '×';
   close.title = 'Close (Esc)';
   close.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-close')));
-  header.append(title, hint, close);
+  header.append(title, hint, toggle, close);
 
   const svg = svgEl('svg');
   svg.classList.add('map-svg');
@@ -63,7 +69,63 @@ export function createMapPanel(): HTMLElement {
   svg.setAttribute('height', String(HEIGHT));
 
   panel.append(header, svg);
+  attachPanZoom(svg);
   return panel;
+}
+
+type View = { x: number; y: number; w: number; h: number };
+
+function getView(svg: SVGSVGElement): View {
+  const vb = svg.viewBox.baseVal;
+  return { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+}
+
+function setView(svg: SVGSVGElement, view: View): void {
+  svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+}
+
+function attachPanZoom(svg: SVGSVGElement): void {
+  svg.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const view = getView(svg);
+      const rect = svg.getBoundingClientRect();
+      const mx = view.x + ((e.clientX - rect.left) / rect.width) * view.w;
+      const my = view.y + ((e.clientY - rect.top) / rect.height) * view.h;
+      const factor = e.deltaY < 0 ? 0.9 : 1.1;
+      setView(svg, {
+        x: mx - (mx - view.x) * factor,
+        y: my - (my - view.y) * factor,
+        w: view.w * factor,
+        h: view.h * factor,
+      });
+    },
+    { passive: false }
+  );
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startView: View = { x: 0, y: 0, w: 0, h: 0 };
+  svg.addEventListener('mousedown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startView = getView(svg);
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const rect = svg.getBoundingClientRect();
+    setView(svg, {
+      ...startView,
+      x: startView.x - ((e.clientX - startX) / rect.width) * startView.w,
+      y: startView.y - ((e.clientY - startY) / rect.height) * startView.h,
+    });
+  });
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+  });
 }
 
 function drawNode(
@@ -117,6 +179,11 @@ export function renderNeighborhood(
 ): void {
   const svg = panel.querySelector<SVGSVGElement>('.map-svg');
   if (!svg) return;
+  setView(svg, { x: 0, y: 0, w: WIDTH, h: HEIGHT });
+  const hint = panel.querySelector('.map-hint');
+  if (hint) hint.textContent = 'click to recenter · click center to go · Esc closes';
+  const toggle = panel.querySelector<HTMLButtonElement>('.map-toggle');
+  if (toggle) toggle.textContent = 'Full map';
   svg.replaceChildren();
 
   const positions = neighbors.map((_, i) => {
@@ -146,4 +213,123 @@ export function renderNeighborhood(
 
   neighbors.forEach((node, i) => drawNode(svg, node, positions[i].x, positions[i].y, false, callbacks));
   drawNode(svg, center, CX, CY, true, callbacks);
+}
+
+// Full document map: one deterministic vertical column ordered by page, links drawn as arcs
+// bulging to the right, pannable/zoomable through the SVG viewBox.
+const FULL_ROW_H = 66;
+const FULL_TOP = 40;
+const FULL_NODE_X = 110;
+const FULL_NODE_W = 240;
+const FULL_NODE_H = 44;
+const FULL_SPINE_X = 58;
+
+function drawFullNode(
+  svg: SVGSVGElement,
+  node: MapNode,
+  y: number,
+  callbacks: MapCallbacks
+): void {
+  const group = svgEl('g');
+  group.setAttribute('class', 'map-node');
+  group.setAttribute('transform', `translate(${FULL_NODE_X},${y})`);
+
+  const rect = svgEl('rect');
+  rect.setAttribute('x', '0');
+  rect.setAttribute('y', String(-FULL_NODE_H / 2));
+  rect.setAttribute('width', String(FULL_NODE_W));
+  rect.setAttribute('height', String(FULL_NODE_H));
+  rect.setAttribute('rx', '8');
+  group.appendChild(rect);
+
+  const pageText = svgEl('text');
+  pageText.setAttribute('class', 'map-node-page');
+  pageText.setAttribute('x', '-8');
+  pageText.setAttribute('y', '4');
+  pageText.style.textAnchor = 'end';
+  pageText.textContent = node.isNote ? `p${node.page} · note` : `p${node.page}`;
+  group.appendChild(pageText);
+
+  wrap(node.label, 32, 2).forEach((line, i, all) => {
+    const t = svgEl('text');
+    t.setAttribute('class', 'map-node-label');
+    t.setAttribute('x', '12');
+    t.setAttribute('y', String(all.length === 1 ? 4 : i === 0 ? -3 : 11));
+    t.style.textAnchor = 'start';
+    t.textContent = line;
+    group.appendChild(t);
+  });
+
+  group.addEventListener('click', () => callbacks.onJump(node.id));
+  svg.appendChild(group);
+}
+
+export function renderFullMap(
+  panel: HTMLElement,
+  nodes: MapNode[],
+  links: { fromId: number; toId: number }[],
+  callbacks: MapCallbacks
+): void {
+  const svg = panel.querySelector<SVGSVGElement>('.map-svg');
+  if (!svg) return;
+
+  const hint = panel.querySelector('.map-hint');
+  if (hint) hint.textContent = 'ordered by page · click a node to jump · drag to pan · scroll to zoom · Esc closes';
+  const toggle = panel.querySelector<HTMLButtonElement>('.map-toggle');
+  if (toggle) toggle.textContent = 'Neighborhood';
+
+  const sorted = [...nodes].sort((a, b) => a.page - b.page || a.id - b.id);
+  const index = new Map(sorted.map((n, i) => [n.id, i]));
+  const contentH = FULL_TOP * 2 + Math.max(sorted.length, 1) * FULL_ROW_H;
+  const contentW = FULL_NODE_X + FULL_NODE_W + 150;
+  setView(svg, { x: 0, y: 0, w: contentW, h: contentH });
+  svg.replaceChildren();
+
+  const yOf = (i: number): number => FULL_TOP + i * FULL_ROW_H + FULL_NODE_H / 2;
+
+  if (sorted.length === 0) {
+    const empty = svgEl('text');
+    empty.setAttribute('class', 'map-node-label');
+    empty.setAttribute('x', String(contentW / 2));
+    empty.setAttribute('y', String(contentH / 2));
+    empty.setAttribute('text-anchor', 'middle');
+    empty.textContent = 'no highlights yet — press H on some text';
+    svg.appendChild(empty);
+    return;
+  }
+
+  const spine = svgEl('line');
+  spine.setAttribute('class', 'map-spine');
+  spine.setAttribute('x1', String(FULL_SPINE_X));
+  spine.setAttribute('y1', String(FULL_TOP));
+  spine.setAttribute('x2', String(FULL_SPINE_X));
+  spine.setAttribute('y2', String(yOf(sorted.length - 1)));
+  svg.appendChild(spine);
+
+  const edgeX = FULL_NODE_X + FULL_NODE_W;
+  for (const link of links) {
+    const ia = index.get(link.fromId);
+    const ib = index.get(link.toId);
+    if (ia === undefined || ib === undefined) continue;
+    const ya = yOf(ia);
+    const yb = yOf(ib);
+    const bulge = edgeX + 70 + Math.abs(yb - ya) * 0.25;
+    const path = svgEl('path');
+    path.setAttribute('class', 'map-edge');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('d', `M ${edgeX} ${ya} Q ${bulge} ${(ya + yb) / 2} ${edgeX} ${yb}`);
+    svg.appendChild(path);
+  }
+
+  sorted.forEach((node, i) => {
+    const y = yOf(i);
+    const tick = svgEl('line');
+    tick.setAttribute('class', 'map-tick');
+    tick.setAttribute('x1', String(FULL_SPINE_X));
+    tick.setAttribute('y1', String(y));
+    tick.setAttribute('x2', String(FULL_NODE_X - 26));
+    tick.setAttribute('y2', String(y));
+    svg.appendChild(tick);
+    drawFullNode(svg, node, y, callbacks);
+  });
 }

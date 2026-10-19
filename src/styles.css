@@ -344,6 +344,31 @@ body {
   stroke-width: 1.5;
 }
 
+.map-spine {
+  stroke: #444;
+  stroke-width: 2;
+}
+
+.map-tick {
+  stroke: #444;
+  stroke-width: 1;
+}
+
+.map-toggle {
+  background: transparent;
+  color: #9cc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.map-toggle:hover {
+  color: #fff;
+  border-color: #007acc;
+}
+
 .map-node rect {
   fill: #2a2a35;
   stroke: #555;
