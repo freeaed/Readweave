@@ -64,7 +64,25 @@ async function refreshHighlights(): Promise<void> {
   renderSidebar(highlights, jumpToHighlight);
 }
 
-pageContainer.addEventListener('page-rendered', refreshHighlights);
+// Persist the reading position shortly after the page settles.
+let savePositionTimer: number | undefined;
+function schedulePositionSave(page: number): void {
+  window.clearTimeout(savePositionTimer);
+  savePositionTimer = window.setTimeout(async () => {
+    const source = await repository.getLastOpenedSource();
+    if (!source) return;
+    await repository.updateSource(source.id, {
+      lastPosition: { page },
+      lastOpenedAt: new Date().toISOString(),
+    });
+  }, 500);
+}
+
+pageContainer.addEventListener('page-rendered', (e) => {
+  const page = (e as CustomEvent<{ page: number }>).detail.page;
+  refreshHighlights();
+  schedulePositionSave(page);
+});
 
 initializeApp();
 

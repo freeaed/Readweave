@@ -105,13 +105,14 @@ async function handleDocumentOpen(file: File): Promise<void> {
     };
     source = await repository.addSource(newSource);
   } else {
-    await repository.updateSource(source.id, {
-      lastOpenedAt: new Date().toISOString(),
-      lastPosition: { page: 1 },
-    });
+    // Reopening the same file resumes where it was left.
+    await repository.updateSource(source.id, { lastOpenedAt: new Date().toISOString() });
   }
 
   await loadPdf(source.fileBlob);
+  if (source.lastPosition?.page) {
+    goToPage(source.lastPosition.page);
+  }
   setEmptyStateVisible(false);
   updatePageLabel();
 }
