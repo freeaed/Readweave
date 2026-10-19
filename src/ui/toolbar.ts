@@ -158,13 +158,22 @@ export async function initializeApp(canvas: HTMLCanvasElement): Promise<void> {
     }
     updatePageLabel();
   } else {
-    console.log('No last opened source found. Loading test PDF from public/...');
-    // Task 2: Load hard-coded test PDF
-    try {
-      await loadPdf('/test.pdf');
-      updatePageLabel();
-    } catch (error) {
-      console.error('Failed to load test PDF:', error);
-    }
+    console.log('No last opened source found. Showing empty state.');
+    showEmptyState();
+  }
+}
+
+function showEmptyState(): void {
+  const viewerContainer = document.getElementById('viewer-container');
+  if (viewerContainer) {
+    viewerContainer.innerHTML = `
+      <div class="empty-state" style="height: 100%;">
+        <h2>Welcome to Study Tool</h2>
+        <p>Open a PDF to start highlighting. Your last document will open automatically next time.</p>
+        <button id="empty-open-btn">Open PDF</button>
+      </div>
+    `;
+    const btn = document.getElementById('empty-open-btn');
+    btn?.addEventListener('click', () => fileInput?.click());
   }
 }
