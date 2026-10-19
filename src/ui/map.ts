@@ -51,16 +51,21 @@ export function createMapPanel(): HTMLElement {
   hint.className = 'map-hint';
   hint.textContent = 'click to recenter · click center to go · Esc closes';
   const toggle = document.createElement('button');
-  toggle.className = 'map-toggle';
+  toggle.className = 'map-btn map-view';
   toggle.textContent = 'Full map';
   toggle.title = 'Switch between the neighborhood and the whole document (Shift+M)';
   toggle.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-toggle')));
+  const layout = document.createElement('button');
+  layout.className = 'map-btn map-layout hidden';
+  layout.textContent = 'Force layout';
+  layout.title = 'Switch between the page-ordered layout and a force layout';
+  layout.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-layout')));
   const close = document.createElement('button');
   close.className = 'map-close';
   close.textContent = '×';
   close.title = 'Close (Esc)';
   close.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-close')));
-  header.append(title, hint, toggle, close);
+  header.append(title, hint, layout, toggle, close);
 
   const svg = svgEl('svg');
   svg.classList.add('map-svg');
@@ -182,8 +187,10 @@ export function renderNeighborhood(
   setView(svg, { x: 0, y: 0, w: WIDTH, h: HEIGHT });
   const hint = panel.querySelector('.map-hint');
   if (hint) hint.textContent = 'click to recenter · click center to go · Esc closes';
-  const toggle = panel.querySelector<HTMLButtonElement>('.map-toggle');
+  const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Full map';
+  const layoutBtn = panel.querySelector('.map-layout');
+  if (layoutBtn) layoutBtn.classList.add('hidden');
   svg.replaceChildren();
 
   const positions = neighbors.map((_, i) => {
@@ -268,15 +275,26 @@ export function renderFullMap(
   panel: HTMLElement,
   nodes: MapNode[],
   links: { fromId: number; toId: number }[],
-  callbacks: MapCallbacks
+  callbacks: MapCallbacks,
+  layout: 'page' | 'force' = 'page'
 ): void {
   const svg = panel.querySelector<SVGSVGElement>('.map-svg');
   if (!svg) return;
 
   const hint = panel.querySelector('.map-hint');
   if (hint) hint.textContent = 'ordered by page · click a node to jump · drag to pan · scroll to zoom · Esc closes';
-  const toggle = panel.querySelector<HTMLButtonElement>('.map-toggle');
+  const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Neighborhood';
+  const layoutBtn = panel.querySelector<HTMLButtonElement>('.map-layout');
+  if (layoutBtn) {
+    layoutBtn.classList.remove('hidden');
+    layoutBtn.textContent = layout === 'force' ? 'Page layout' : 'Force layout';
+  }
+
+  if (layout === 'force') {
+    drawForceLayout(svg, nodes, links, callbacks);
+    return;
+  }
 
   const sorted = [...nodes].sort((a, b) => a.page - b.page || a.id - b.id);
   const index = new Map(sorted.map((n, i) => [n.id, i]));
@@ -333,3 +351,136 @@ export function renderFullMap(
     drawFullNode(svg, node, y, callbacks);
   });
 }
+
+// Optional force layout (never the default): a deterministic Fruchterman-Reingold relaxation
+// seeded on a circle, so the same document always produces the same picture.
+const FORCE_W = 620;
+const FORCE_H = 520;
+
+function forceLayout(
+  nodes: MapNode[],
+  links: { fromId: number; toId: number }[]
+): { x: number; y: number }[] {
+  const n = nodes.length;
+  const index = new Map(nodes.map((node, i) => [node.id, i]));
+  const k = Math.sqrt((FORCE_W * FORCE_H) / Math.max(n, 1));
+  const positions = nodes.map((_, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(n, 1);
+    return { x: FORCE_W / 2 + (FORCE_W / 3) * Math.cos(angle), y: FORCE_H / 2 + (FORCE_H / 3) * Math.sin(angle) };
+  });
+
+  let temp = FORCE_W / 8;
+  for (let iter = 0; iter < 300; iter++) {
+    const disp = positions.map(() => ({ x: 0, y: 0 }));
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const dx = positions[i].x - positions[j].x;
+        const dy = positions[i].y - positions[j].y;
+        const dist = Math.hypot(dx, dy) || 0.01;
+        const force = (k * k) / dist;
+        disp[i].x += (dx / dist) * force;
+        disp[i].y += (dy / dist) * force;
+      }
+    }
+
+    for (const link of links) {
+      const i = index.get(link.fromId);
+      const j = index.get(link.toId);
+      if (i === undefined || j === undefined) continue;
+      const dx = positions[i].x - positions[j].x;
+      const dy = positions[i].y - positions[j].y;
+      const dist = Math.hypot(dx, dy) || 0.01;
+      const force = (dist * dist) / k;
+      disp[i].x -= (dx / dist) * force;
+      disp[i].y -= (dy / dist) * force;
+      disp[j].x += (dx / dist) * force;
+      disp[j].y += (dy / dist) * force;
+    }
+
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(disp[i].x, disp[i].y) || 0.01;
+      const limited = Math.min(d, temp);
+      positions[i].x = Math.max(70, Math.min(FORCE_W - 70, positions[i].x + (disp[i].x / d) * limited));
+      positions[i].y = Math.max(60, Math.min(FORCE_H - 60, positions[i].y + (disp[i].y / d) * limited));
+    }
+    temp *= 0.95;
+  }
+
+  return positions;
+}
+
+function drawForceNode(
+  svg: SVGSVGElement,
+  node: MapNode,
+  cx: number,
+  cy: number,
+  callbacks: MapCallbacks
+): void {
+  const group = svgEl('g');
+  group.setAttribute('class', 'map-node');
+  group.setAttribute('transform', `translate(${cx},${cy})`);
+
+  const rect = svgEl('rect');
+  rect.setAttribute('x', String(-NODE_W / 2));
+  rect.setAttribute('y', String(-NODE_H / 2));
+  rect.setAttribute('width', String(NODE_W));
+  rect.setAttribute('height', String(NODE_H));
+  rect.setAttribute('rx', '8');
+  group.appendChild(rect);
+
+  const prefix = node.isNote ? `p${node.page} · note · ` : `p${node.page} · `;
+  wrap(`${prefix}${node.label}`, 22, 2).forEach((line, i, all) => {
+    const t = svgEl('text');
+    t.setAttribute('class', 'map-node-label');
+    t.setAttribute('x', String(-NODE_W / 2 + 10));
+    t.setAttribute('y', String(all.length === 1 ? 5 : i === 0 ? -3 : 13));
+    t.style.textAnchor = 'start';
+    t.textContent = line;
+    group.appendChild(t);
+  });
+
+  group.addEventListener('click', () => callbacks.onJump(node.id));
+  svg.appendChild(group);
+}
+
+function drawForceLayout(
+  svg: SVGSVGElement,
+  nodes: MapNode[],
+  links: { fromId: number; toId: number }[],
+  callbacks: MapCallbacks
+): void {
+  setView(svg, { x: 0, y: 0, w: FORCE_W, h: FORCE_H });
+  svg.replaceChildren();
+
+  if (nodes.length === 0) {
+    const empty = svgEl('text');
+    empty.setAttribute('class', 'map-node-label');
+    empty.setAttribute('x', String(FORCE_W / 2));
+    empty.setAttribute('y', String(FORCE_H / 2));
+    empty.setAttribute('text-anchor', 'middle');
+    empty.textContent = 'no highlights yet — press H on some text';
+    svg.appendChild(empty);
+    return;
+  }
+
+  const positions = forceLayout(nodes, links);
+  const index = new Map(nodes.map((node, i) => [node.id, i]));
+
+  for (const link of links) {
+    const i = index.get(link.fromId);
+    const j = index.get(link.toId);
+    if (i === undefined || j === undefined) continue;
+    const line = svgEl('line');
+    line.setAttribute('class', 'map-edge');
+    line.setAttribute('x1', String(positions[i].x));
+    line.setAttribute('y1', String(positions[i].y));
+    line.setAttribute('x2', String(positions[j].x));
+    line.setAttribute('y2', String(positions[j].y));
+    svg.appendChild(line);
+  }
+
+  nodes.forEach((node, i) => drawForceNode(svg, node, positions[i].x, positions[i].y, callbacks));
+}
+

@@ -47,8 +47,13 @@ const mapPanel = createMapPanel();
 appContainer.appendChild(mapPanel);
 mapPanel.addEventListener('map-close', () => closeMap());
 mapPanel.addEventListener('map-toggle', () => toggleMapView());
+mapPanel.addEventListener('map-layout', () => {
+  fullMapLayout = fullMapLayout === 'page' ? 'force' : 'page';
+  if (mapOpen && mapMode === 'full') renderMap();
+});
 let mapOpen = false;
 let mapMode: 'neighborhood' | 'full' = 'neighborhood';
+let fullMapLayout: 'page' | 'force' = 'page';
 let mapCenterId: number | null = null;
 
 const RELATIONS = ['related', 'defines', 'example of', 'contrasts'] as const;
@@ -126,7 +131,7 @@ function neighborsOf(centerId: number): MapNode[] {
 function renderMap(): void {
   if (!mapOpen) return;
   if (mapMode === 'full') {
-    renderFullMap(mapPanel, currentHighlights.map(mapNodeOf), currentLinks, mapCallbacks);
+    renderFullMap(mapPanel, currentHighlights.map(mapNodeOf), currentLinks, mapCallbacks, fullMapLayout);
     return;
   }
   if (mapCenterId === null) return;

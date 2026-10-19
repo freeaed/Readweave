@@ -354,7 +354,7 @@ body {
   stroke-width: 1;
 }
 
-.map-toggle {
+.map-btn {
   background: transparent;
   color: #9cc;
   border: 1px solid #555;
@@ -364,7 +364,7 @@ body {
   cursor: pointer;
 }
 
-.map-toggle:hover {
+.map-btn:hover {
   color: #fff;
   border-color: #007acc;
 }
