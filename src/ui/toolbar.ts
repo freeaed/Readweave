@@ -1,45 +1,74 @@
-import { loadPdf, renderPage, nextPage, prevPage, getCurrentPage, getTotalPages, getPdfDoc } from '../pdf/viewer';
+import { loadPdf } from '../pdf/viewer';
+import { repository } from '../storage/repository';
+import { getBlobHash } from '../utils/hash';
+import '../styles.css';
+import { Source } from '../types';
 
 /**
- * Initial setup hook for the application, handles initial PDF loading and UI setup.
- * @param canvas The canvas element where the PDF will be rendered.
+ * Handles opening a document, whether via button or dropped file.
+ * @param file The File/Blob object to process.
+ * @param canvas The rendering canvas.
+ */
+async function handleDocumentOpen(file: File, canvas: HTMLCanvasElement) {
+  const hash = await getBlobHash(file);
+  console.log(`Calculated hash: ${hash}`);
+
+  // 1. Check if source exists
+  let source: Source | undefined = await repository.findSourceByHash(hash);
+
+  if (!source) {
+    // 2. Create a new source
+    const newSource = {
+      title: file.name.replace('.pdf', ''), // Simple title extraction
+      contentHash: hash,
+      fileBlob: file, // Blob storage
+      // Other fields will be populated by repository.addSource later
+    } as Omit<Source, 'id'>;
+    
+    console.log("Source not found. Saving new source...");
+    source = await repository.addSource(newSource);
+  } else {
+    console.log("Source found in database. Reusing existing source.");
+  }
+  
+  // 3. Load PDF and initialize viewer state
+  console.log(`Loading source ID ${source?.id}`);
+  // Use URL.createObjectURL for the Blob/File object to serve it to PDF.js
+  await loadPdf(URL.createObjectURL(source!.fileBlob));
+}
+
+/**
+ * Initialization function:
+ * 1. Checks for a last opened source.
+ * 2. Attaches listeners for file input/drag drop.
+ * 3. If a source is found, loads its blob content.
+ * @param canvas The rendering canvas element.
  */
 export function initializeApp(canvas: HTMLCanvasElement) {
-  console.log("Application initialization sequence started. Loading PDF...");
-  
-  const viewer = { 
-    canvas: canvas
-  };
-  
-  // --- Task 2 Implementation: Hardcoded PDF Path ---
-  // NOTE: For Task 2 to work, a PDF file MUST be placed in the /public directory
-  const PDF_PATH = '/sample.pdf'; 
-  
-  // 1. Load the PDF
-  loadPdf(PDF_PATH)
-    .catch(error => {
-        console.error("Could not start PDF viewer:", error);
-        // Display error state in UI here eventually
+  console.log("Application initialization sequence started.");
+
+  // Event Listener Setup (Mocked for this phase)
+  const dropZone = document.getElementById('drop-zone');
+  if (dropZone) {
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0] as File;
+      if (file) {
+        handleDocumentOpen(file, canvas);
+      }
     });
+    // Add dragover listener for visual feedback (ignored for code brevity)
+  }
 
-  // 2. Define UI interaction handlers (These will be called by the actual DOM elements)
-  viewer.handleNext = async () => {
-    if (nextPage()) {
-      await renderPage(getCurrentPage());
+  // Task 3 Step: Load last opened source on startup
+  repository.getLastOpenedSource().then(async (source) => {
+    if (source) {
+      console.log("Found last opened source. Re-loading...");
+      // Use temporary file creation/blob access here in a real sandbox environment
+      // For now, we simulate the load using the stored blob
+      await loadPdf(URL.createObjectURL(source.fileBlob));
     } else {
-      console.log("Reached end of PDF.");
+      console.log("No last opened source found.");
     }
-  };
-
-  viewer.handlePrev = async () => {
-    if (prevPage()) {
-      await renderPage(getCurrentPage());
-    } else {
-      console.log("Reached beginning of PDF.");
-    }
-  };
-
-  // 3. Stub for rendering the entire view
-  console.log("Toolbar initialized. State managed by window.viewer stub.");
-  window.viewer = viewer; 
+  });
 }
