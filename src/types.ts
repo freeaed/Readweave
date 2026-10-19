@@ -26,6 +26,16 @@ export type Highlight = {
   createdAt: string;
 };
 
+export type Link = {
+  id: number;
+  fromId: number;
+  toId: number;
+  relation: string;
+  origin: 'user' | 'ai';
+  status: 'suggested' | 'accepted' | 'rejected';
+  createdAt: string;
+};
+
 export interface Repository {
   addSource(s: Omit<Source, 'id'>): Promise<Source>;
   findSourceByHash(hash: string): Promise<Source | undefined>;
@@ -36,4 +46,9 @@ export interface Repository {
   listHighlights(sourceId: number): Promise<Highlight[]>;
   updateHighlight(id: number, patch: Partial<Highlight>): Promise<void>;
   deleteHighlight(id: number): Promise<void>;
+  addLink(l: Omit<Link, 'id' | 'createdAt'>): Promise<Link>;
+  listLinksForHighlight(highlightId: number): Promise<Link[]>;
+  listLinksForSource(sourceId: number): Promise<Link[]>;
+  updateLink(id: number, patch: Partial<Link>): Promise<void>;
+  deleteLink(id: number): Promise<void>;
 }
