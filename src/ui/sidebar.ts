@@ -50,17 +50,19 @@ export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbac
   }
 
   for (const highlight of sorted) {
+    const isNoteNode = highlight.anchor.rects.length === 0;
     const item = document.createElement('div');
     item.className = 'sidebar-item';
     item.dataset.highlightId = String(highlight.id);
+    if (isNoteNode) item.classList.add('note-node');
 
     const page = document.createElement('div');
     page.className = 'page-num';
-    page.textContent = `Page ${highlight.anchor.page}`;
+    page.textContent = isNoteNode ? `Page ${highlight.anchor.page} · note` : `Page ${highlight.anchor.page}`;
 
     const preview = document.createElement('div');
     preview.className = 'text-preview';
-    preview.textContent = highlight.text.slice(0, 100);
+    preview.textContent = highlight.text ? highlight.text.slice(0, 100) : highlight.note || 'Empty note';
 
     const noteInput = document.createElement('input');
     noteInput.type = 'text';

@@ -281,6 +281,10 @@ body {
   border-color: #007acc;
 }
 
+.sidebar-item.note-node {
+  border-left: 3px solid #6b8e23;
+}
+
 .sidebar-item-actions {
   display: flex;
   gap: 4px;

@@ -4,7 +4,7 @@ import { createHighlightFromSelection, clearSelection, showHighlightFlash } from
 import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
 import { repository } from './storage/repository';
-import { Highlight, Link } from './types';
+import { Highlight, Link, Anchor } from './types';
 import './styles.css';
 
 const appContainer = document.getElementById('app');
@@ -74,7 +74,7 @@ function applyLinkMarkers(): void {
 }
 
 function labelOf(highlight: Highlight): string {
-  return (highlight.text || highlight.note || '').slice(0, 40);
+  return (highlight.text || highlight.note || 'note').slice(0, 40);
 }
 
 function buildConnections(links: Link[]): ConnectionMap {
@@ -298,6 +298,32 @@ pageContainer.addEventListener('page-rendered', (e) => {
 
 initializeApp();
 
+async function createNoteNode(): Promise<void> {
+  const source = await repository.getLastOpenedSource();
+  if (!source) {
+    showToast('Open a PDF first');
+    return;
+  }
+  const anchor: Anchor = {
+    page: getCurrentPage(),
+    rects: [],
+    quote: { exact: '', prefix: '', suffix: '' },
+  };
+  const saved = await repository.addHighlight({
+    sourceId: source.id,
+    text: '',
+    note: '',
+    anchor,
+    createdAt: new Date().toISOString(),
+  });
+  activeHighlightId = saved.id;
+  await refreshHighlights();
+  const input = document.querySelector<HTMLInputElement>(
+    `.sidebar-item[data-highlight-id="${saved.id}"] .note-input`
+  );
+  input?.focus();
+}
+
 async function createHighlightFromCurrentSelection(): Promise<void> {
   const selectionData = await createHighlightFromSelection();
   if (!selectionData) return;
@@ -331,6 +357,8 @@ document.addEventListener('keydown', async (e) => {
 
   if (e.key === 'h' || e.key === 'H') {
     await createHighlightFromCurrentSelection();
+  } else if (e.key === 'n' || e.key === 'N') {
+    await createNoteNode();
   } else if (e.key === 'l' || e.key === 'L') {
     await armLinking();
   } else if (e.key === 'Escape') {
