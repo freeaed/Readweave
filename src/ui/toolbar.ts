@@ -158,6 +158,13 @@ export async function initializeApp(canvas: HTMLCanvasElement): Promise<void> {
     }
     updatePageLabel();
   } else {
-    console.log('No last opened source found.');
+    console.log('No last opened source found. Loading test PDF from public/...');
+    // Task 2: Load hard-coded test PDF
+    try {
+      await loadPdf('/test.pdf');
+      updatePageLabel();
+    } catch (error) {
+      console.error('Failed to load test PDF:', error);
+    }
   }
 }
