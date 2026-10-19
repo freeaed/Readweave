@@ -2,7 +2,7 @@ import { initViewer, getCurrentPage, goToPage } from './pdf/viewer';
 import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from './ui/toolbar';
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
 import { renderPageHighlights, flashHighlight } from './pdf/overlay';
-import { createSidebar, renderSidebar } from './ui/sidebar';
+import { createSidebar, renderSidebar, showUndoToast } from './ui/sidebar';
 import { repository } from './storage/repository';
 import { Highlight } from './types';
 import './styles.css';
@@ -52,16 +52,38 @@ function jumpToHighlight(highlight: Highlight): void {
   }
 }
 
+const sidebarCallbacks = {
+  onSelect: jumpToHighlight,
+  onDelete: async (highlight: Highlight) => {
+    await repository.deleteHighlight(highlight.id);
+    await refreshHighlights();
+    const restore: Omit<Highlight, 'id'> = {
+      sourceId: highlight.sourceId,
+      text: highlight.text,
+      note: highlight.note,
+      anchor: highlight.anchor,
+      createdAt: highlight.createdAt,
+    };
+    showUndoToast('Highlight deleted', async () => {
+      await repository.addHighlight(restore);
+      await refreshHighlights();
+    });
+  },
+  onNote: async (highlight: Highlight, note: string | null) => {
+    await repository.updateHighlight(highlight.id, { note });
+  },
+};
+
 async function refreshHighlights(): Promise<void> {
   updatePageLabel();
   const source = await repository.getLastOpenedSource();
   if (!source) {
-    renderSidebar([], jumpToHighlight);
+    renderSidebar([], sidebarCallbacks);
     return;
   }
   const highlights = await repository.listHighlights(source.id);
   renderPageHighlights(pageContainer, highlights, getCurrentPage());
-  renderSidebar(highlights, jumpToHighlight);
+  renderSidebar(highlights, sidebarCallbacks);
 }
 
 // Persist the reading position shortly after the page settles.

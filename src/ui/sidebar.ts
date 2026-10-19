@@ -1,5 +1,11 @@
 import { Highlight } from '../types';
 
+export interface SidebarCallbacks {
+  onSelect: (highlight: Highlight) => void;
+  onDelete: (highlight: Highlight) => void;
+  onNote: (highlight: Highlight, note: string | null) => void;
+}
+
 function topOf(highlight: Highlight): number {
   if (highlight.anchor.rects.length === 0) return 0;
   return Math.min(...highlight.anchor.rects.map((r) => r[1]));
@@ -25,7 +31,7 @@ export function createSidebar(): HTMLElement {
   return sidebar;
 }
 
-export function renderSidebar(highlights: Highlight[], onSelect: (highlight: Highlight) => void): void {
+export function renderSidebar(highlights: Highlight[], callbacks: SidebarCallbacks): void {
   const list = document.getElementById('sidebar-list');
   if (!list) return;
   list.replaceChildren();
@@ -52,8 +58,52 @@ export function renderSidebar(highlights: Highlight[], onSelect: (highlight: Hig
     preview.className = 'text-preview';
     preview.textContent = highlight.text.slice(0, 100);
 
-    item.append(page, preview);
-    item.addEventListener('click', () => onSelect(highlight));
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'note-input';
+    noteInput.placeholder = 'Add a note…';
+    noteInput.value = highlight.note ?? '';
+    noteInput.addEventListener('click', (e) => e.stopPropagation());
+    let noteTimer: number | undefined;
+    noteInput.addEventListener('input', () => {
+      window.clearTimeout(noteTimer);
+      const value = noteInput.value;
+      noteTimer = window.setTimeout(() => callbacks.onNote(highlight, value.trim() === '' ? null : value), 500);
+    });
+    noteInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') noteInput.blur();
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'sidebar-item-actions';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-btn';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      callbacks.onDelete(highlight);
+    });
+    actions.appendChild(deleteBtn);
+
+    item.append(page, preview, noteInput, actions);
+    item.addEventListener('click', () => callbacks.onSelect(highlight));
     list.appendChild(item);
   }
+}
+
+export function showUndoToast(message: string, onUndo: () => void): void {
+  const toast = document.createElement('div');
+  toast.className = 'toast undo';
+  const text = document.createElement('span');
+  text.textContent = message;
+  const undo = document.createElement('button');
+  undo.textContent = 'Undo';
+  undo.addEventListener('click', () => {
+    onUndo();
+    toast.remove();
+  });
+  toast.append(text, undo);
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 5000);
 }

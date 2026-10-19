@@ -15,6 +15,10 @@
   canvas/text layer are never destroyed when no document is loaded.
 - The sample `public/test.pdf` is kept as a manual test file; the app no longer loads any
   hard-coded PDF (Task 3 removed that path).
+- Undo after deleting a highlight re-inserts it as a new row (new id), because the repository
+  interface from the plan has no "restore with same id" method. Text, note and anchor are kept,
+  so the user sees no difference; only the id changes.
+- Reopening a PDF you have seen before resumes at its saved page instead of page 1.
 
 ## Known problems
 - PDF text extracted with `join(' ')` can differ from the browser selection (e.g. line breaks),
