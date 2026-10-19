@@ -1,5 +1,8 @@
 import { initViewer } from './pdf/viewer';
 import { createToolbar, initializeApp } from './ui/toolbar';
+import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
+import { repository } from './storage/repository';
+import { Highlight } from './types';
 import './styles.css';
 
 console.log('Application starting up...');
@@ -44,3 +47,31 @@ const { canvas } = initViewer(pageContainer);
 
 // Initialize app (load last source, setup events)
 initializeApp(canvas);
+
+// H key handler for highlighting
+document.addEventListener('keydown', async (e) => {
+  if (e.key !== 'h' && e.key !== 'H') return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const selectionData = await createHighlightFromSelection();
+  if (!selectionData) return;
+
+  e.preventDefault();
+
+  const source = await repository.getLastOpenedSource();
+  if (!source) return;
+
+  const highlight: Omit<Highlight, 'id'> = {
+    sourceId: source.id,
+    text: selectionData.text,
+    note: null,
+    anchor: selectionData.anchor,
+    createdAt: new Date().toISOString(),
+  };
+
+  await repository.addHighlight(highlight);
+  clearSelection();
+  showHighlightFlash();
+  console.log('Highlight saved:', highlight);
+});
