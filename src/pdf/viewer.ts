@@ -1,8 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Configure PDF.js worker for Vite
-const workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+// Configure the PDF.js worker for Vite.
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 type ViewerState = {
   pdfDoc: pdfjsLib.PDFDocumentProxy | null;
@@ -29,19 +29,14 @@ const viewerState: ViewerState = {
 export function initViewer(container: HTMLElement): { canvas: HTMLCanvasElement; textLayerDiv: HTMLDivElement } {
   viewerState.container = container;
 
-  // Create canvas
   const canvas = document.createElement('canvas');
   canvas.style.display = 'block';
   container.appendChild(canvas);
   viewerState.canvas = canvas;
 
-  // Create text layer div
+  // PDF.js v6 expects the class name `textLayer` and its own CSS.
   const textLayerDiv = document.createElement('div');
-  textLayerDiv.className = 'text-layer';
-  textLayerDiv.style.position = 'absolute';
-  textLayerDiv.style.top = '0';
-  textLayerDiv.style.left = '0';
-  textLayerDiv.style.pointerEvents = 'none';
+  textLayerDiv.className = 'textLayer';
   container.appendChild(textLayerDiv);
   viewerState.textLayerDiv = textLayerDiv;
 
@@ -49,74 +44,70 @@ export function initViewer(container: HTMLElement): { canvas: HTMLCanvasElement;
 }
 
 export async function loadPdf(fileOrUrl: File | Blob | string): Promise<void> {
-  console.log('Loading PDF...');
+  const loadingTask = typeof fileOrUrl === 'string'
+    ? pdfjsLib.getDocument({ url: fileOrUrl })
+    : pdfjsLib.getDocument({ data: await fileOrUrl.arrayBuffer() });
 
-  try {
-    let loadingTask: pdfjsLib.PDFDocumentLoadingTask;
-    if (typeof fileOrUrl === 'string') {
-      loadingTask = pdfjsLib.getDocument({ url: fileOrUrl });
-    } else {
-      const arrayBuffer = await fileOrUrl.arrayBuffer();
-      loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    }
+  const pdfDoc = await loadingTask.promise;
+  viewerState.pdfDoc = pdfDoc;
+  viewerState.totalPageCount = pdfDoc.numPages;
+  viewerState.pageNumber = 1;
 
-    const pdfDoc = await loadingTask.promise;
-    viewerState.pdfDoc = pdfDoc;
-    viewerState.totalPageCount = pdfDoc.numPages;
-    viewerState.pageNumber = 1;
-
-    console.log(`PDF loaded successfully. Total pages: ${pdfDoc.numPages}`);
-    await renderPage(1);
-  } catch (error) {
-    console.error('Error loading PDF:', error);
-    throw new Error('Failed to load PDF');
-  }
+  await renderPage(1);
 }
 
 export async function renderPage(pageNumber: number): Promise<string> {
-  if (!viewerState.pdfDoc || !viewerState.canvas || !viewerState.textLayerDiv) {
-    console.warn('PDF document or canvas not initialized');
-    return '';
-  }
+  const { pdfDoc, canvas, textLayerDiv, container } = viewerState;
+  if (!pdfDoc || !canvas || !textLayerDiv || !container) return '';
 
-  const page = await viewerState.pdfDoc.getPage(pageNumber);
+  const page = await pdfDoc.getPage(pageNumber);
   viewerState.pageNumber = pageNumber;
 
-  // Get text content first
   const textContent = await page.getTextContent();
   const fullText = textContent.items.map((item: any) => item.str).join(' ');
 
-  // Calculate viewport
   const viewport = page.getViewport({ scale: viewerState.scale });
+  const outputScale = new pdfjsLib.OutputScale();
 
-  // Set canvas dimensions
-  viewerState.canvas.height = viewport.height;
-  viewerState.canvas.width = viewport.width;
+  // Render the bitmap at device resolution, display at CSS size: stays sharp on HiDPI.
+  canvas.width = Math.floor(viewport.width * outputScale.sx);
+  canvas.height = Math.floor(viewport.height * outputScale.sy);
+  canvas.style.width = `${Math.floor(viewport.width)}px`;
+  canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-  // Set text layer dimensions to match
-  viewerState.textLayerDiv.style.width = `${viewport.width}px`;
-  viewerState.textLayerDiv.style.height = `${viewport.height}px`;
+  // The page container defines the coordinate space for the text layer.
+  container.style.width = `${Math.floor(viewport.width)}px`;
+  container.style.height = `${Math.floor(viewport.height)}px`;
+  container.style.setProperty('--total-scale-factor', String(viewport.scale));
+  container.style.setProperty('--scale-factor', String(viewport.scale));
+  container.style.setProperty('--scale-round-x', '1px');
+  container.style.setProperty('--scale-round-y', '1px');
 
-  // Render PDF page to canvas
-  const renderContext = {
-    canvas: viewerState.canvas,
-    canvasContext: viewerState.canvas.getContext('2d')!,
-    viewport: viewport,
-  };
-  await page.render(renderContext).promise;
+  const transform = outputScale.scaled
+    ? [outputScale.sx, 0, 0, outputScale.sy, 0, 0]
+    : undefined;
 
-  // Render text layer using TextLayer class
+  await page.render({
+    canvas,
+    canvasContext: canvas.getContext('2d')!,
+    viewport,
+    transform,
+  }).promise;
+
+  // Replace the previous text layer.
   if (viewerState.textLayer) {
     viewerState.textLayer.cancel();
+    viewerState.textLayer = null;
   }
-  viewerState.textLayer = new pdfjsLib.TextLayer({
+  textLayerDiv.replaceChildren();
+  const textLayer = new pdfjsLib.TextLayer({
     textContentSource: textContent,
-    container: viewerState.textLayerDiv,
-    viewport: viewport,
+    container: textLayerDiv,
+    viewport,
   });
-  await viewerState.textLayer.render();
+  viewerState.textLayer = textLayer;
+  await textLayer.render();
 
-  console.log(`Page ${pageNumber} rendered successfully.`);
   return fullText;
 }
 
@@ -155,12 +146,15 @@ export function setScale(scale: number): void {
 }
 
 export async function fitToWidth(): Promise<void> {
-  if (!viewerState.pdfDoc || !viewerState.container) return;
-  
-  const containerWidth = viewerState.container.clientWidth - 40; // padding
+  if (!viewerState.pdfDoc) return;
+
+  const scroller = document.getElementById('viewer-container');
+  const available = scroller ? scroller.clientWidth - 40 : 0;
+  if (available <= 0) return;
+
   const page = await viewerState.pdfDoc.getPage(viewerState.pageNumber);
   const viewport = page.getViewport({ scale: 1.0 });
-  const scale = containerWidth / viewport.width;
+  const scale = available / viewport.width;
   setScale(Math.min(Math.max(scale, 0.5), 3.0));
 }
 
