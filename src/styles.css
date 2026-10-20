@@ -290,6 +290,11 @@ body {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow: hidden;
   background: #1e1e1e;
   border: 1px solid #444;
   border-radius: 8px;
@@ -343,6 +348,7 @@ body {
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  margin-left: auto;
 }
 
 .map-close:hover {
@@ -351,6 +357,9 @@ body {
 
 .map-svg {
   display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(88vh - 86px);
   background: #181818;
   border-radius: 0;
 }
@@ -446,6 +455,24 @@ body {
   stroke-width: 2;
 }
 
+.map-node:focus {
+  outline: none;
+}
+
+.map-node:focus-visible rect {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.node-jump:focus {
+  outline: none;
+}
+
+.node-jump:focus-visible circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
 .map-node text {
   fill: #ddd;
   text-anchor: middle;
@@ -494,6 +521,12 @@ body {
 
 .map-backdrop.hidden {
   display: none;
+}
+
+@media (max-width: 640px) {
+  .map-header {
+    flex-wrap: wrap;
+  }
 }
 
 .sidebar-item-actions {

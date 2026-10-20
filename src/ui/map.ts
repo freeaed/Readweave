@@ -57,6 +57,8 @@ export function createMapPanel(): HTMLElement {
   const panel = document.createElement('div');
   panel.id = 'map-panel';
   panel.className = 'map-panel hidden';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Map');
 
   const header = document.createElement('div');
   header.className = 'map-header';
@@ -70,16 +72,19 @@ export function createMapPanel(): HTMLElement {
   toggle.className = 'map-btn map-view';
   toggle.textContent = 'Full map';
   toggle.title = 'Switch between the neighborhood and the whole document (Shift+M)';
+  toggle.setAttribute('aria-label', 'Switch map view');
   toggle.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-toggle')));
   const layout = document.createElement('button');
   layout.className = 'map-btn map-layout hidden';
   layout.textContent = 'Force layout';
   layout.title = 'Switch between the page-ordered layout and a force layout';
+  layout.setAttribute('aria-label', 'Switch layout');
   layout.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-layout')));
   const close = document.createElement('button');
   close.className = 'map-close';
   close.textContent = '×';
   close.title = 'Close (Esc)';
+  close.setAttribute('aria-label', 'Close map');
   close.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-close')));
 
   const svg = svgEl('svg');
@@ -94,16 +99,19 @@ export function createMapPanel(): HTMLElement {
   zoomOut.className = 'map-btn';
   zoomOut.textContent = '−';
   zoomOut.title = 'Zoom out';
+  zoomOut.setAttribute('aria-label', 'Zoom out');
   zoomOut.addEventListener('click', () => zoomBy(svg, 1.25));
   const zoomIn = document.createElement('button');
   zoomIn.className = 'map-btn';
   zoomIn.textContent = '+';
   zoomIn.title = 'Zoom in';
+  zoomIn.setAttribute('aria-label', 'Zoom in');
   zoomIn.addEventListener('click', () => zoomBy(svg, 0.8));
   const fit = document.createElement('button');
   fit.className = 'map-btn';
   fit.textContent = 'Fit';
   fit.title = 'Fit the whole map in view';
+  fit.setAttribute('aria-label', 'Fit the whole map in view');
   fit.addEventListener('click', () => fitView(svg));
   zoom.append(zoomOut, zoomIn, fit);
 
@@ -258,6 +266,12 @@ function drawNode(
   const group = svgEl('g');
   group.setAttribute('class', `map-node${isCenter ? ' center' : ''}`);
   group.setAttribute('transform', `translate(${x},${y})`);
+  group.setAttribute('role', 'button');
+  group.setAttribute('tabindex', '0');
+  group.setAttribute(
+    'aria-label',
+    `Page ${node.page}: ${node.label}. Activate to ${isCenter ? 'open' : 'explore'}.`
+  );
 
   const rect = svgEl('rect');
   rect.setAttribute('x', String(-NODE_W / 2));
@@ -291,6 +305,9 @@ function drawNode(
   if (!isCenter) {
     const jump = svgEl('g');
     jump.setAttribute('class', 'node-jump');
+    jump.setAttribute('role', 'button');
+    jump.setAttribute('tabindex', '0');
+    jump.setAttribute('aria-label', `Open page ${node.page}`);
     const jumpCircle = svgEl('circle');
     jumpCircle.setAttribute('cx', String(NODE_W / 2 - 10));
     jumpCircle.setAttribute('cy', String(-NODE_H / 2 + 10));
@@ -306,13 +323,27 @@ function drawNode(
       e.stopPropagation();
       callbacks.onJump(node.id);
     });
+    jump.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      callbacks.onJump(node.id);
+    });
     group.appendChild(jump);
   }
 
-  attachNodeHover(svg, group, node.id);
-  group.addEventListener('click', () => {
+  const activate = (): void => {
     if (isCenter) callbacks.onJump(node.id);
     else callbacks.onRecenter(node.id);
+  };
+
+  attachNodeHover(svg, group, node.id);
+  group.addEventListener('click', activate);
+  group.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    activate();
   });
 
   svg.appendChild(group);
@@ -333,6 +364,8 @@ export function renderNeighborhood(
   panel.style.width = `${WIDTH}px`;
   const hint = panel.querySelector('.map-hint');
   if (hint) hint.textContent = 'click a neighbour to explore · ↗ opens it · Esc closes';
+  const mapTitle = panel.querySelector('.map-title');
+  if (mapTitle) mapTitle.textContent = 'Neighborhood';
   const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Full map';
   const layoutBtn = panel.querySelector('.map-layout');
@@ -401,6 +434,9 @@ function drawFullNode(
   const group = svgEl('g');
   group.setAttribute('class', 'map-node');
   group.setAttribute('transform', `translate(${FULL_NODE_X},${y})`);
+  group.setAttribute('role', 'button');
+  group.setAttribute('tabindex', '0');
+  group.setAttribute('aria-label', `Page ${node.page}: ${node.label}. Activate to open.`);
 
   const title = svgEl('title');
   title.textContent = `Open p${node.page}`;
@@ -434,6 +470,12 @@ function drawFullNode(
 
   attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => callbacks.onJump(node.id));
+  group.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    callbacks.onJump(node.id);
+  });
   svg.appendChild(group);
 }
 
@@ -449,6 +491,8 @@ export function renderFullMap(
 
   const hint = panel.querySelector('.map-hint');
   if (hint) hint.textContent = 'click to open · drag to pan · scroll to zoom · Esc closes';
+  const mapTitle = panel.querySelector('.map-title');
+  if (mapTitle) mapTitle.textContent = 'Full map';
   const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Neighborhood';
   const layoutBtn = panel.querySelector<HTMLButtonElement>('.map-layout');
@@ -604,6 +648,9 @@ function drawForceNode(
   const group = svgEl('g');
   group.setAttribute('class', 'map-node');
   group.setAttribute('transform', `translate(${cx},${cy})`);
+  group.setAttribute('role', 'button');
+  group.setAttribute('tabindex', '0');
+  group.setAttribute('aria-label', `Page ${node.page}: ${node.label}. Activate to open.`);
 
   const title = svgEl('title');
   title.textContent = `Open p${node.page}`;
@@ -630,6 +677,12 @@ function drawForceNode(
 
   attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => callbacks.onJump(node.id));
+  group.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    callbacks.onJump(node.id);
+  });
   svg.appendChild(group);
 }
 
