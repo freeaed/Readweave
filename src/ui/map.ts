@@ -5,6 +5,22 @@ export type MapNode = {
   isNote: boolean;
 };
 
+export type MapEdge = {
+  fromId: number;
+  toId: number;
+  relation: string;
+};
+
+export type NeighborEntry = {
+  node: MapNode;
+  relation: string;
+  direction: 'both' | 'toNeighbor' | 'toCenter';
+};
+
+export function isSymmetricRelation(relation: string): boolean {
+  return relation === 'related' || relation === 'contrasts';
+}
+
 export interface MapCallbacks {
   onRecenter: (id: number) => void;
   onJump: (id: number) => void;
@@ -133,6 +149,68 @@ function attachPanZoom(svg: SVGSVGElement): void {
   });
 }
 
+function addArrowDefs(svg: SVGSVGElement): void {
+  const defs = svgEl('defs');
+  const marker = svgEl('marker');
+  marker.setAttribute('id', 'map-arrow');
+  marker.setAttribute('viewBox', '0 0 10 10');
+  marker.setAttribute('refX', '9');
+  marker.setAttribute('refY', '5');
+  marker.setAttribute('markerWidth', '7');
+  marker.setAttribute('markerHeight', '7');
+  marker.setAttribute('orient', 'auto-start-reverse');
+  const head = svgEl('path');
+  head.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+  head.setAttribute('fill', '#888');
+  marker.appendChild(head);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+}
+
+function applyHover(svg: SVGSVGElement, id: number): void {
+  svg.classList.add('has-hover');
+  svg.querySelectorAll<SVGGElement>('.map-node').forEach((g) => {
+    g.classList.toggle('hover', g.dataset.nodeId === String(id));
+  });
+  svg.querySelectorAll<SVGElement>('.map-edge, .map-edge-label').forEach((el) => {
+    el.classList.toggle('hover', el.dataset.from === String(id) || el.dataset.to === String(id));
+  });
+}
+
+function clearHover(svg: SVGSVGElement): void {
+  svg.classList.remove('has-hover');
+  svg.querySelectorAll('.hover').forEach((el) => el.classList.remove('hover'));
+}
+
+function attachNodeHover(svg: SVGSVGElement, group: SVGGElement, id: number): void {
+  group.dataset.nodeId = String(id);
+  group.addEventListener('mouseenter', () => applyHover(svg, id));
+  group.addEventListener('mouseleave', () => clearHover(svg));
+}
+
+function addEdgeLabel(
+  svg: SVGSVGElement,
+  x: number,
+  y: number,
+  edge: MapEdge
+): void {
+  if (edge.relation === 'related') return;
+  const text = svgEl('text');
+  text.setAttribute('class', 'map-edge-label');
+  text.setAttribute('x', String(x));
+  text.setAttribute('y', String(y));
+  text.textContent = edge.relation;
+  text.dataset.from = String(edge.fromId);
+  text.dataset.to = String(edge.toId);
+  svg.appendChild(text);
+}
+
+function markEdgeDirection(el: SVGElement, edge: MapEdge): void {
+  el.dataset.from = String(edge.fromId);
+  el.dataset.to = String(edge.toId);
+  if (!isSymmetricRelation(edge.relation)) el.setAttribute('marker-end', 'url(#map-arrow)');
+}
+
 function drawNode(
   svg: SVGSVGElement,
   node: MapNode,
@@ -168,6 +246,7 @@ function drawNode(
     group.appendChild(t);
   });
 
+  attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => {
     if (isCenter) callbacks.onJump(node.id);
     else callbacks.onRecenter(node.id);
@@ -179,7 +258,7 @@ function drawNode(
 export function renderNeighborhood(
   panel: HTMLElement,
   center: MapNode,
-  neighbors: MapNode[],
+  neighbors: NeighborEntry[],
   callbacks: MapCallbacks
 ): void {
   const svg = panel.querySelector<SVGSVGElement>('.map-svg');
@@ -192,21 +271,36 @@ export function renderNeighborhood(
   const layoutBtn = panel.querySelector('.map-layout');
   if (layoutBtn) layoutBtn.classList.add('hidden');
   svg.replaceChildren();
+  addArrowDefs(svg);
 
   const positions = neighbors.map((_, i) => {
     const angle = (2 * Math.PI * i) / Math.max(neighbors.length, 1) - Math.PI / 2;
     return { x: CX + RING_RADIUS * Math.cos(angle), y: CY + RING_RADIUS * Math.sin(angle) };
   });
 
-  for (const pos of positions) {
+  neighbors.forEach((entry, i) => {
+    const pos = positions[i];
+    const edge: MapEdge = { fromId: center.id, toId: entry.node.id, relation: entry.relation };
+    const arrowAtCenter = entry.direction === 'toCenter';
+    const x1 = arrowAtCenter ? pos.x : CX;
+    const y1 = arrowAtCenter ? pos.y : CY;
+    const x2 = arrowAtCenter ? CX : pos.x;
+    const y2 = arrowAtCenter ? CY : pos.y;
+
     const line = svgEl('line');
     line.setAttribute('class', 'map-edge');
-    line.setAttribute('x1', String(CX));
-    line.setAttribute('y1', String(CY));
-    line.setAttribute('x2', String(pos.x));
-    line.setAttribute('y2', String(pos.y));
+    line.setAttribute('x1', String(x1));
+    line.setAttribute('y1', String(y1));
+    line.setAttribute('x2', String(x2));
+    line.setAttribute('y2', String(y2));
+    markEdgeDirection(line, edge);
     svg.appendChild(line);
-  }
+
+    const dx = pos.x - CX;
+    const dy = pos.y - CY;
+    const len = Math.hypot(dx, dy) || 1;
+    addEdgeLabel(svg, (CX + pos.x) / 2 + (-dy / len) * 12, (CY + pos.y) / 2 + (dx / len) * 12, edge);
+  });
 
   if (neighbors.length === 0) {
     const empty = svgEl('text');
@@ -218,7 +312,7 @@ export function renderNeighborhood(
     svg.appendChild(empty);
   }
 
-  neighbors.forEach((node, i) => drawNode(svg, node, positions[i].x, positions[i].y, false, callbacks));
+  neighbors.forEach((entry, i) => drawNode(svg, entry.node, positions[i].x, positions[i].y, false, callbacks));
   drawNode(svg, center, CX, CY, true, callbacks);
 }
 
@@ -267,6 +361,7 @@ function drawFullNode(
     group.appendChild(t);
   });
 
+  attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => callbacks.onJump(node.id));
   svg.appendChild(group);
 }
@@ -274,7 +369,7 @@ function drawFullNode(
 export function renderFullMap(
   panel: HTMLElement,
   nodes: MapNode[],
-  links: { fromId: number; toId: number }[],
+  links: MapEdge[],
   callbacks: MapCallbacks,
   layout: 'page' | 'force' = 'page'
 ): void {
@@ -302,6 +397,7 @@ export function renderFullMap(
   const contentW = FULL_NODE_X + FULL_NODE_W + 150;
   setView(svg, { x: 0, y: 0, w: contentW, h: contentH });
   svg.replaceChildren();
+  addArrowDefs(svg);
 
   const yOf = (i: number): number => FULL_TOP + i * FULL_ROW_H + FULL_NODE_H / 2;
 
@@ -332,11 +428,16 @@ export function renderFullMap(
     const ya = yOf(ia);
     const yb = yOf(ib);
     const bulge = edgeX + 70 + Math.abs(yb - ya) * 0.25;
+    const midY = (ya + yb) / 2;
     const path = svgEl('path');
     path.setAttribute('class', 'map-edge');
     path.setAttribute('fill', 'none');
-    path.setAttribute('d', `M ${edgeX} ${ya} Q ${bulge} ${(ya + yb) / 2} ${edgeX} ${yb}`);
+    path.setAttribute('d', `M ${edgeX} ${ya} Q ${bulge} ${midY} ${edgeX} ${yb}`);
+    markEdgeDirection(path, link);
     svg.appendChild(path);
+
+    const midX = 0.5 * edgeX + 0.5 * bulge;
+    addEdgeLabel(svg, midX, 0.25 * ya + 0.5 * midY + 0.25 * yb, link);
   }
 
   sorted.forEach((node, i) => {
@@ -359,7 +460,7 @@ const FORCE_H = 520;
 
 function forceLayout(
   nodes: MapNode[],
-  links: { fromId: number; toId: number }[]
+  links: MapEdge[]
 ): { x: number; y: number }[] {
   const n = nodes.length;
   const index = new Map(nodes.map((node, i) => [node.id, i]));
@@ -441,6 +542,7 @@ function drawForceNode(
     group.appendChild(t);
   });
 
+  attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => callbacks.onJump(node.id));
   svg.appendChild(group);
 }
@@ -448,11 +550,12 @@ function drawForceNode(
 function drawForceLayout(
   svg: SVGSVGElement,
   nodes: MapNode[],
-  links: { fromId: number; toId: number }[],
+  links: MapEdge[],
   callbacks: MapCallbacks
 ): void {
   setView(svg, { x: 0, y: 0, w: FORCE_W, h: FORCE_H });
   svg.replaceChildren();
+  addArrowDefs(svg);
 
   if (nodes.length === 0) {
     const empty = svgEl('text');
@@ -478,7 +581,15 @@ function drawForceLayout(
     line.setAttribute('y1', String(positions[i].y));
     line.setAttribute('x2', String(positions[j].x));
     line.setAttribute('y2', String(positions[j].y));
+    markEdgeDirection(line, link);
     svg.appendChild(line);
+
+    addEdgeLabel(
+      svg,
+      (positions[i].x + positions[j].x) / 2,
+      (positions[i].y + positions[j].y) / 2,
+      link
+    );
   }
 
   nodes.forEach((node, i) => drawForceNode(svg, node, positions[i].x, positions[i].y, callbacks));

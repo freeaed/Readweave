@@ -3,7 +3,7 @@ import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from '.
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
 import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
-import { createMapPanel, renderNeighborhood, renderFullMap, MapNode, MapCallbacks } from './ui/map';
+import { createMapPanel, renderNeighborhood, renderFullMap, MapNode, MapCallbacks, NeighborEntry, isSymmetricRelation } from './ui/map';
 import { repository } from './storage/repository';
 import { Highlight, Link, Anchor } from './types';
 import './styles.css';
@@ -119,13 +119,21 @@ const mapCallbacks: MapCallbacks = {
   onToggleView: () => toggleMapView(),
 };
 
-function neighborsOf(centerId: number): MapNode[] {
-  return currentLinks
-    .map((link) => (link.fromId === centerId ? link.toId : link.toId === centerId ? link.fromId : null))
-    .filter((id): id is number => id !== null)
-    .map((id) => findHighlight(id))
-    .filter((h): h is Highlight => Boolean(h))
-    .map(mapNodeOf);
+function neighborsOf(centerId: number): NeighborEntry[] {
+  const entries: NeighborEntry[] = [];
+  for (const link of currentLinks) {
+    const otherId = link.fromId === centerId ? link.toId : link.toId === centerId ? link.fromId : null;
+    if (otherId === null) continue;
+    const highlight = findHighlight(otherId);
+    if (!highlight) continue;
+    const direction: NeighborEntry['direction'] = isSymmetricRelation(link.relation)
+      ? 'both'
+      : link.fromId === centerId
+        ? 'toNeighbor'
+        : 'toCenter';
+    entries.push({ node: mapNodeOf(highlight), relation: link.relation, direction });
+  }
+  return entries;
 }
 
 function renderMap(): void {

@@ -301,6 +301,10 @@ body {
   display: none;
 }
 
+.map-layout.hidden {
+  display: none;
+}
+
 .map-header {
   display: flex;
   align-items: center;
@@ -342,6 +346,51 @@ body {
 .map-edge {
   stroke: #555;
   stroke-width: 1.5;
+}
+
+.map-edge-label {
+  fill: #9aa4ad;
+  font-size: 10px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #181818;
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+.map-svg {
+  cursor: grab;
+}
+
+.map-svg:active {
+  cursor: grabbing;
+}
+
+.map-node,
+.map-edge,
+.map-edge-label {
+  transition: opacity 0.12s ease;
+}
+
+.map-node {
+  cursor: pointer;
+}
+
+.map-svg.has-hover .map-node,
+.map-svg.has-hover .map-edge,
+.map-svg.has-hover .map-edge-label {
+  opacity: 0.25;
+}
+
+.map-svg.has-hover .map-node.hover,
+.map-svg.has-hover .map-edge.hover,
+.map-svg.has-hover .map-edge-label.hover {
+  opacity: 1;
+}
+
+.map-svg.has-hover .map-edge.hover {
+  stroke: #007acc;
+  stroke-width: 2;
 }
 
 .map-spine {
