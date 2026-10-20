@@ -34,8 +34,8 @@ emptyState.id = 'empty-state';
 emptyState.className = 'empty-state';
 emptyState.style.display = 'none';
 emptyState.innerHTML = `
-  <h2>Welcome to Study Tool</h2>
-  <p>Open a PDF to start highlighting. Your last document will open automatically next time.</p>
+  <h2>Welcome to Readweave</h2>
+  <p>Open a PDF to start highlighting, then link ideas across pages. Your last document will open automatically next time.</p>
   <button id="empty-open-btn">Open PDF</button>
 `;
 emptyState.querySelector('#empty-open-btn')?.addEventListener('click', openFileDialog);

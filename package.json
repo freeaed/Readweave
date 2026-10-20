@@ -1,5 +1,5 @@
 {
-  "name": "study-tool",
+  "name": "readweave",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,8 +16,14 @@
     "vite": "^5.0.0"
   },
   "main": "index.js",
-  "keywords": [],
+  "keywords": [
+    "pdf",
+    "reader",
+    "highlights",
+    "notes",
+    "knowledge-graph"
+  ],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "A low-friction PDF reader for studying: highlight, link ideas across pages, and see them as a map."
 }

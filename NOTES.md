@@ -1,4 +1,8 @@
-# Notes
+# Readweave — notes
+
+Readweave is a low-friction PDF reader for studying: highlight with **H**, link related ideas across
+pages with **L**, and see them as a map with **M**. Notes, links and your reading position are
+stored locally in the browser.
 
 ## How to run
 ```
