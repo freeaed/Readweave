@@ -14,9 +14,17 @@ export function openFileDialog(): void {
   fileInput?.click();
 }
 
-export function createToolbar(onMap?: () => void): HTMLElement {
+export function createToolbar(options: { onMap?: () => void; onHome?: () => void } = {}): HTMLElement {
   const toolbar = document.createElement('div');
   toolbar.className = 'toolbar';
+
+  if (options.onHome) {
+    const homeBtn = document.createElement('button');
+    homeBtn.textContent = 'Home';
+    homeBtn.title = 'Recent documents';
+    homeBtn.addEventListener('click', options.onHome);
+    toolbar.appendChild(homeBtn);
+  }
 
   const openBtn = document.createElement('button');
   openBtn.textContent = 'Open PDF';
@@ -72,11 +80,11 @@ export function createToolbar(onMap?: () => void): HTMLElement {
 
   toolbar.append(prevBtn, pageLabel, nextBtn, zoomOutBtn, zoomInBtn, fitWidthBtn);
 
-  if (onMap) {
+  if (options.onMap) {
     const mapBtn = document.createElement('button');
     mapBtn.textContent = 'Map';
     mapBtn.title = 'Full document map (Shift+M)';
-    mapBtn.addEventListener('click', onMap);
+    mapBtn.addEventListener('click', options.onMap);
     toolbar.appendChild(mapBtn);
   }
 
@@ -97,6 +105,17 @@ export function updatePageLabel(): void {
   if (label) label.textContent = `Page ${getCurrentPage()} of ${getTotalPages()}`;
 }
 
+export async function openSource(source: Source): Promise<void> {
+  await repository.updateSource(source.id, { lastOpenedAt: new Date().toISOString() });
+  await loadPdf(source.fileBlob);
+  if (source.lastPosition?.page) {
+    goToPage(source.lastPosition.page);
+  }
+  setEmptyStateVisible(false);
+  updatePageLabel();
+  window.dispatchEvent(new CustomEvent('document-opened'));
+}
+
 async function handleDocumentOpen(file: File): Promise<void> {
   const hash = await getBlobHash(file);
 
@@ -112,17 +131,9 @@ async function handleDocumentOpen(file: File): Promise<void> {
       createdAt: new Date().toISOString(),
     };
     source = await repository.addSource(newSource);
-  } else {
-    // Reopening the same file resumes where it was left.
-    await repository.updateSource(source.id, { lastOpenedAt: new Date().toISOString() });
   }
 
-  await loadPdf(source.fileBlob);
-  if (source.lastPosition?.page) {
-    goToPage(source.lastPosition.page);
-  }
-  setEmptyStateVisible(false);
-  updatePageLabel();
+  await openSource(source);
 }
 
 export async function initializeApp(): Promise<void> {

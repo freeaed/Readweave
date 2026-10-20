@@ -33,6 +33,10 @@ const repositoryImpl = {
     return db.sources.orderBy('lastOpenedAt').reverse().first();
   },
 
+  async listSources(): Promise<Source[]> {
+    return db.sources.orderBy('lastOpenedAt').reverse().toArray();
+  },
+
   async updateSource(id: number, patch: Partial<Source>): Promise<void> {
     await db.sources.update(id, patch);
   },

@@ -1,9 +1,10 @@
-import { initViewer, getCurrentPage, goToPage } from './pdf/viewer';
-import { createToolbar, initializeApp, openFileDialog, updatePageLabel } from './ui/toolbar';
+import { initViewer, getCurrentPage, goToPage, getTotalPages } from './pdf/viewer';
+import { createToolbar, initializeApp, openFileDialog, openSource, updatePageLabel } from './ui/toolbar';
 import { createHighlightFromSelection, clearSelection, showHighlightFlash } from './pdf/selection';
 import { renderPageHighlights, flashHighlight, ConnectionMap } from './pdf/overlay';
 import { createSidebar, renderSidebar, showToast, showUndoToast } from './ui/sidebar';
 import { createMapPanel, renderNeighborhood, renderFullMap, MapNode, MapCallbacks, NeighborEntry, isSymmetricRelation } from './ui/map';
+import { createHomeView, renderHome } from './ui/home';
 import { repository } from './storage/repository';
 import { Highlight, Link, Anchor } from './types';
 import './styles.css';
@@ -12,7 +13,7 @@ const appContainer = document.getElementById('app');
 if (!appContainer) throw new Error('Missing #app container');
 
 appContainer.replaceChildren();
-appContainer.appendChild(createToolbar(toggleFullMap));
+appContainer.appendChild(createToolbar({ onMap: toggleFullMap, onHome: toggleHome }));
 
 const content = document.createElement('div');
 content.id = 'content';
@@ -40,6 +41,14 @@ emptyState.innerHTML = `
 `;
 emptyState.querySelector('#empty-open-btn')?.addEventListener('click', openFileDialog);
 viewerContainer.appendChild(emptyState);
+
+const homeView = createHomeView(openFileDialog);
+viewerContainer.appendChild(homeView);
+let homeOpen = false;
+homeView.addEventListener('home-close', () => closeHome());
+window.addEventListener('document-opened', () => {
+  if (homeOpen) closeHome();
+});
 
 content.appendChild(createSidebar());
 
@@ -213,6 +222,29 @@ function toggleMapView(): void {
   } else {
     openFullMap();
   }
+}
+
+async function openHome(): Promise<void> {
+  closeMap();
+  homeOpen = true;
+  emptyState.style.display = 'none';
+  homeView.classList.remove('hidden');
+  await renderHome(homeView, async (source) => {
+    await openSource(source);
+    closeHome();
+  });
+}
+
+function closeHome(): void {
+  if (!homeOpen) return;
+  homeOpen = false;
+  homeView.classList.add('hidden');
+  if (getTotalPages() === 0) emptyState.style.display = 'flex';
+}
+
+function toggleHome(): void {
+  if (homeOpen) closeHome();
+  else void openHome();
 }
 
 function buildConnections(links: Link[]): ConnectionMap {
@@ -505,7 +537,8 @@ document.addEventListener('keydown', async (e) => {
   } else if (e.key === 'M') {
     toggleFullMap();
   } else if (e.key === 'Escape') {
-    if (mapOpen) closeMap();
+    if (homeOpen) closeHome();
+    else if (mapOpen) closeMap();
     else cancelLinking();
   } else if (pendingRelationLinkId !== null && RELATION_KEYS[e.key]) {
     await setRelation(pendingRelationLinkId, RELATION_KEYS[e.key]);

@@ -41,6 +41,7 @@ export interface Repository {
   findSourceByHash(hash: string): Promise<Source | undefined>;
   getSource(id: number): Promise<Source | undefined>;
   getLastOpenedSource(): Promise<Source | undefined>;
+  listSources(): Promise<Source[]>;
   updateSource(id: number, patch: Partial<Source>): Promise<void>;
   addHighlight(h: Omit<Highlight, 'id'>): Promise<Highlight>;
   listHighlights(sourceId: number): Promise<Highlight[]>;
