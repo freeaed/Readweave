@@ -45,6 +45,10 @@ content.appendChild(createSidebar());
 
 const mapPanel = createMapPanel();
 appContainer.appendChild(mapPanel);
+const mapBackdrop = document.createElement('div');
+mapBackdrop.className = 'map-backdrop hidden';
+mapBackdrop.addEventListener('click', () => closeMap());
+appContainer.appendChild(mapBackdrop);
 mapPanel.addEventListener('map-close', () => closeMap());
 mapPanel.addEventListener('map-toggle', () => toggleMapView());
 mapPanel.addEventListener('map-layout', () => {
@@ -154,6 +158,7 @@ function renderMap(): void {
 function showMap(): void {
   renderMap();
   mapPanel.classList.remove('hidden');
+  mapBackdrop.classList.remove('hidden');
 }
 
 function openNeighborhood(centerId: number): void {
@@ -174,6 +179,7 @@ function closeMap(): void {
   mapOpen = false;
   mapCenterId = null;
   mapPanel.classList.add('hidden');
+  mapBackdrop.classList.add('hidden');
 }
 
 function toggleMap(): void {

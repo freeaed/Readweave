@@ -81,7 +81,6 @@ export function createMapPanel(): HTMLElement {
   close.textContent = '×';
   close.title = 'Close (Esc)';
   close.addEventListener('click', () => panel.dispatchEvent(new CustomEvent('map-close')));
-  header.append(title, hint, layout, toggle, close);
 
   const svg = svgEl('svg');
   svg.classList.add('map-svg');
@@ -89,7 +88,28 @@ export function createMapPanel(): HTMLElement {
   svg.setAttribute('width', String(WIDTH));
   svg.setAttribute('height', String(HEIGHT));
 
-  panel.append(header, svg);
+  const zoom = document.createElement('div');
+  zoom.className = 'map-zoom';
+  const zoomOut = document.createElement('button');
+  zoomOut.className = 'map-btn';
+  zoomOut.textContent = '−';
+  zoomOut.title = 'Zoom out';
+  zoomOut.addEventListener('click', () => zoomBy(svg, 1.25));
+  const zoomIn = document.createElement('button');
+  zoomIn.className = 'map-btn';
+  zoomIn.textContent = '+';
+  zoomIn.title = 'Zoom in';
+  zoomIn.addEventListener('click', () => zoomBy(svg, 0.8));
+  const fit = document.createElement('button');
+  fit.className = 'map-btn';
+  fit.textContent = 'Fit';
+  fit.title = 'Fit the whole map in view';
+  fit.addEventListener('click', () => fitView(svg));
+  zoom.append(zoomOut, zoomIn, fit);
+
+  header.append(title, zoom, layout, toggle, close);
+
+  panel.append(header, svg, hint);
   attachPanZoom(svg);
   return panel;
 }
@@ -103,6 +123,22 @@ function getView(svg: SVGSVGElement): View {
 
 function setView(svg: SVGSVGElement, view: View): void {
   svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+}
+
+function zoomBy(svg: SVGSVGElement, factor: number): void {
+  const view = getView(svg);
+  const cx = view.x + view.w / 2;
+  const cy = view.y + view.h / 2;
+  const w = view.w * factor;
+  const h = view.h * factor;
+  setView(svg, { x: cx - w / 2, y: cy - h / 2, w, h });
+}
+
+function fitView(svg: SVGSVGElement): void {
+  const fit = svg.dataset.fit;
+  if (!fit) return;
+  const [x, y, w, h] = fit.split(' ').map(Number);
+  setView(svg, { x, y, w, h });
 }
 
 function attachPanZoom(svg: SVGSVGElement): void {
@@ -246,6 +282,33 @@ function drawNode(
     group.appendChild(t);
   });
 
+  const title = svgEl('title');
+  title.textContent = isCenter
+    ? `Open p${node.page}`
+    : `p${node.page} · click to explore · ↗ opens`;
+  group.appendChild(title);
+
+  if (!isCenter) {
+    const jump = svgEl('g');
+    jump.setAttribute('class', 'node-jump');
+    const jumpCircle = svgEl('circle');
+    jumpCircle.setAttribute('cx', String(NODE_W / 2 - 10));
+    jumpCircle.setAttribute('cy', String(-NODE_H / 2 + 10));
+    jumpCircle.setAttribute('r', '8');
+    jump.appendChild(jumpCircle);
+    const jumpIcon = svgEl('text');
+    jumpIcon.setAttribute('class', 'node-jump-icon');
+    jumpIcon.setAttribute('x', String(NODE_W / 2 - 10));
+    jumpIcon.setAttribute('y', String(-NODE_H / 2 + 13.5));
+    jumpIcon.textContent = '↗';
+    jump.appendChild(jumpIcon);
+    jump.addEventListener('click', (e) => {
+      e.stopPropagation();
+      callbacks.onJump(node.id);
+    });
+    group.appendChild(jump);
+  }
+
   attachNodeHover(svg, group, node.id);
   group.addEventListener('click', () => {
     if (isCenter) callbacks.onJump(node.id);
@@ -264,8 +327,12 @@ export function renderNeighborhood(
   const svg = panel.querySelector<SVGSVGElement>('.map-svg');
   if (!svg) return;
   setView(svg, { x: 0, y: 0, w: WIDTH, h: HEIGHT });
+  svg.dataset.fit = `0 0 ${WIDTH} ${HEIGHT}`;
+  svg.setAttribute('width', String(WIDTH));
+  svg.setAttribute('height', String(HEIGHT));
+  panel.style.width = `${WIDTH}px`;
   const hint = panel.querySelector('.map-hint');
-  if (hint) hint.textContent = 'click to recenter · click center to go · Esc closes';
+  if (hint) hint.textContent = 'click a neighbour to explore · ↗ opens it · Esc closes';
   const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Full map';
   const layoutBtn = panel.querySelector('.map-layout');
@@ -335,6 +402,10 @@ function drawFullNode(
   group.setAttribute('class', 'map-node');
   group.setAttribute('transform', `translate(${FULL_NODE_X},${y})`);
 
+  const title = svgEl('title');
+  title.textContent = `Open p${node.page}`;
+  group.appendChild(title);
+
   const rect = svgEl('rect');
   rect.setAttribute('x', '0');
   rect.setAttribute('y', String(-FULL_NODE_H / 2));
@@ -377,7 +448,7 @@ export function renderFullMap(
   if (!svg) return;
 
   const hint = panel.querySelector('.map-hint');
-  if (hint) hint.textContent = 'ordered by page · click a node to jump · drag to pan · scroll to zoom · Esc closes';
+  if (hint) hint.textContent = 'click to open · drag to pan · scroll to zoom · Esc closes';
   const toggle = panel.querySelector<HTMLButtonElement>('.map-view');
   if (toggle) toggle.textContent = 'Neighborhood';
   const layoutBtn = panel.querySelector<HTMLButtonElement>('.map-layout');
@@ -387,6 +458,9 @@ export function renderFullMap(
   }
 
   if (layout === 'force') {
+    svg.setAttribute('width', String(FORCE_W));
+    svg.setAttribute('height', String(FORCE_H));
+    panel.style.width = `${FORCE_W}px`;
     drawForceLayout(svg, nodes, links, callbacks);
     return;
   }
@@ -396,6 +470,10 @@ export function renderFullMap(
   const contentH = FULL_TOP * 2 + Math.max(sorted.length, 1) * FULL_ROW_H;
   const contentW = FULL_NODE_X + FULL_NODE_W + 150;
   setView(svg, { x: 0, y: 0, w: contentW, h: contentH });
+  svg.dataset.fit = `0 0 ${contentW} ${contentH}`;
+  svg.setAttribute('width', String(contentW));
+  svg.setAttribute('height', String(contentH));
+  panel.style.width = `${contentW}px`;
   svg.replaceChildren();
   addArrowDefs(svg);
 
@@ -421,10 +499,10 @@ export function renderFullMap(
   svg.appendChild(spine);
 
   const edgeX = FULL_NODE_X + FULL_NODE_W;
-  for (const link of links) {
+  links.forEach((link, i) => {
     const ia = index.get(link.fromId);
     const ib = index.get(link.toId);
-    if (ia === undefined || ib === undefined) continue;
+    if (ia === undefined || ib === undefined) return;
     const ya = yOf(ia);
     const yb = yOf(ib);
     const bulge = edgeX + 70 + Math.abs(yb - ya) * 0.25;
@@ -436,9 +514,13 @@ export function renderFullMap(
     markEdgeDirection(path, link);
     svg.appendChild(path);
 
-    const midX = 0.5 * edgeX + 0.5 * bulge;
-    addEdgeLabel(svg, midX, 0.25 * ya + 0.5 * midY + 0.25 * yb, link);
-  }
+    // Place labels toward the source end so arcs that share a midpoint do not collide.
+    const t = 0.62;
+    const mt = 1 - t;
+    const labelX = mt * mt * edgeX + 2 * t * mt * bulge + t * t * edgeX;
+    const labelY = mt * mt * ya + 2 * t * mt * midY + t * t * yb + (i % 2 === 0 ? -7 : 7);
+    addEdgeLabel(svg, labelX, labelY, link);
+  });
 
   sorted.forEach((node, i) => {
     const y = yOf(i);
@@ -523,6 +605,10 @@ function drawForceNode(
   group.setAttribute('class', 'map-node');
   group.setAttribute('transform', `translate(${cx},${cy})`);
 
+  const title = svgEl('title');
+  title.textContent = `Open p${node.page}`;
+  group.appendChild(title);
+
   const rect = svgEl('rect');
   rect.setAttribute('x', String(-NODE_W / 2));
   rect.setAttribute('y', String(-NODE_H / 2));
@@ -554,6 +640,7 @@ function drawForceLayout(
   callbacks: MapCallbacks
 ): void {
   setView(svg, { x: 0, y: 0, w: FORCE_W, h: FORCE_H });
+  svg.dataset.fit = `0 0 ${FORCE_W} ${FORCE_H}`;
   svg.replaceChildren();
   addArrowDefs(svg);
 

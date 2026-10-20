@@ -311,17 +311,29 @@ body {
   gap: 10px;
   padding: 8px 12px;
   border-bottom: 1px solid #333;
+  white-space: nowrap;
 }
 
 .map-title {
   font-weight: 600;
   color: #ddd;
+  flex-shrink: 0;
 }
 
 .map-hint {
-  flex: 1;
+  display: block;
+  padding: 5px 12px;
+  border-top: 1px solid #333;
+  border-radius: 0 0 8px 8px;
   font-size: 11px;
   color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-header button {
+  flex-shrink: 0;
 }
 
 .map-close {
@@ -340,7 +352,7 @@ body {
 .map-svg {
   display: block;
   background: #181818;
-  border-radius: 0 0 8px 8px;
+  border-radius: 0;
 }
 
 .map-edge {
@@ -447,6 +459,41 @@ body {
 
 .map-node-label {
   font-size: 12px;
+}
+
+.node-jump {
+  cursor: pointer;
+}
+
+.node-jump circle {
+  fill: #1b2b36;
+  stroke: #007acc;
+  stroke-width: 1;
+}
+
+.node-jump:hover circle {
+  fill: #007acc;
+}
+
+.node-jump text {
+  fill: #cfe8ff;
+  font-size: 10px;
+}
+
+.map-zoom {
+  display: flex;
+  gap: 4px;
+}
+
+.map-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 99;
+}
+
+.map-backdrop.hidden {
+  display: none;
 }
 
 .sidebar-item-actions {
